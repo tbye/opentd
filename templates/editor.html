@@ -1,0 +1,1089 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block page_title %}Editor — {{ site_name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Editor uses full viewport under the navbar */
+  body.editor-body {
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  body.editor-body > header { flex: 0 0 auto; }
+  body.editor-body > footer { display: none; }
+  body.editor-body > main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+  .editor-shell {
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) 1fr;
+    min-height: 0;
+    flex: 1 1 auto;
+    height: 100%;
+    max-height: 100%;
+    /* allow stage tooltips to paint outside cells without clipping */
+    overflow: hidden;
+  }
+  .editor-shell > .editor-stage {
+    min-width: 0;
+    overflow: visible;
+  }
+  @media (max-width: 768px) {
+    .editor-shell {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+      height: auto;
+      min-height: calc(100vh - 4rem);
+    }
+  }
+  .editor-palette {
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* allow grid child to shrink so overflow can scroll */
+    max-height: 100%;
+    border-right: 1px solid oklch(var(--bc) / 0.12);
+    background: oklch(var(--b2));
+    overflow: hidden;
+  }
+  .editor-palette__header {
+    flex: 0 0 auto;
+  }
+  .editor-palette__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .editor-stage {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    /* visible so play-button tooltips can sit above the bar without clipping */
+    overflow: visible;
+    background: oklch(var(--b1));
+  }
+  /* Game-type hint + paint palette above the grid (centered column) */
+  .paint-bar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem 0.55rem;
+    border-bottom: 1px solid oklch(var(--bc) / 0.12);
+    background: oklch(var(--b2));
+    z-index: 5;
+    text-align: center;
+  }
+  .paint-bar__hint {
+    margin: 0;
+    max-width: min(42rem, 100%);
+    font-size: 0.7rem;
+    opacity: 0.65;
+    line-height: 1.35;
+    text-align: center;
+  }
+  .paint-bar__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem 0.45rem;
+  }
+  .paint-bar__label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.55;
+  }
+  .paint-bar__tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    align-items: center;
+    justify-content: center;
+  }
+  .paint-swatch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.6rem 0.3rem 0.35rem;
+    border-radius: 0.45rem;
+    border: 2px solid transparent;
+    background: #fff;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.2;
+    cursor: pointer;
+    user-select: none;
+    color: inherit;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+    transition:
+      background-color 0.12s ease,
+      box-shadow 0.12s ease,
+      border-color 0.12s ease;
+  }
+  .paint-swatch:hover {
+    background: #f3f4f6;
+  }
+  /* Selected tool — solid hex colors so the toggle is reliable (no color-mix) */
+  .paint-swatch.is-active,
+  .paint-swatch[aria-pressed="true"] {
+    font-weight: 600;
+    box-shadow: none;
+  }
+  .paint-swatch[data-tool="spawn"].is-active,
+  .paint-swatch[data-tool="spawn"][aria-pressed="true"] {
+    background: #ffe0b2;
+    border-color: #fb8c00;
+  }
+  .paint-swatch[data-tool="exit"].is-active,
+  .paint-swatch[data-tool="exit"][aria-pressed="true"] {
+    background: #ffcdd2;
+    border-color: #e53935;
+  }
+  .paint-swatch[data-tool="path"].is-active,
+  .paint-swatch[data-tool="path"][aria-pressed="true"] {
+    background: #efebe9;
+    border-color: #8d6e63;
+  }
+  .paint-swatch[data-tool="tower"].is-active,
+  .paint-swatch[data-tool="tower"][aria-pressed="true"] {
+    background: #bbdefb;
+    border-color: #1e88e5;
+  }
+  .paint-swatch[data-tool="ground"].is-active,
+  .paint-swatch[data-tool="ground"][aria-pressed="true"] {
+    background: #dcedc8;
+    border-color: #7cb342;
+  }
+  .paint-swatch[data-tool="blocked"].is-active,
+  .paint-swatch[data-tool="blocked"][aria-pressed="true"] {
+    background: #cfd8dc;
+    border-color: #546e7a;
+  }
+  .paint-swatch__chip {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 0.2rem;
+    flex: 0 0 auto;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+  }
+  .editor-stage__canvas {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    background:
+      linear-gradient(oklch(var(--bc) / 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, oklch(var(--bc) / 0.04) 1px, transparent 1px),
+      oklch(var(--b1));
+    background-size: 24px 24px;
+    display: flex;
+    /* Sit just under the paint bar; horizontally centered with tools above */
+    align-items: flex-start;
+    justify-content: center;
+    padding: 0.5rem 0.75rem 1rem;
+  }
+  .map-frame {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+  }
+  .playtest-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 4;
+    overflow: hidden;
+  }
+  .stage-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0.4rem 0.75rem 0;
+    background: oklch(var(--b2));
+    border-bottom: 1px solid oklch(var(--bc) / 0.1);
+  }
+  .stage-tab {
+    appearance: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    background: transparent;
+    color: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.4rem 0.9rem;
+    border-radius: 0.45rem 0.45rem 0 0;
+    cursor: pointer;
+    opacity: 0.65;
+  }
+  .stage-tab:hover { opacity: 1; }
+  .stage-tab.is-active {
+    opacity: 1;
+    background: oklch(var(--b1));
+    border-color: oklch(var(--bc) / 0.12);
+    box-shadow: 0 -1px 0 oklch(var(--b1));
+  }
+  .stage-panel { display: none; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+  .stage-panel.is-active { display: flex; }
+
+  .game-info-bar {
+    flex: 0 0 auto;
+    display: none; /* visible while playtesting or on Scoreboard tab preview */
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem 1.25rem;
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    background: #0f172a;
+    color: #e2e8f0;
+    font-size: 0.8rem;
+    min-height: 2.25rem;
+  }
+  .editor-stage.is-playtesting .game-info-bar,
+  .editor-stage.is-scoreboard-tab .game-info-bar {
+    display: flex;
+  }
+  .game-info-bar__stat {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .game-info-bar__stat strong {
+    font-weight: 700;
+    color: #fff;
+    margin-left: 0.25rem;
+  }
+  .game-info-bar__stat--score strong {
+    color: #fde047;
+  }
+  .game-info-bar__stat--timer strong {
+    color: #7dd3fc;
+  }
+  .game-info-bar__empty {
+    opacity: 0.5;
+    font-size: 0.75rem;
+  }
+
+  .scoreboard-editor {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+  .scoreboard-editor__card {
+    width: min(36rem, 100%);
+    border: 1px solid oklch(var(--bc) / 0.12);
+    border-radius: 0.65rem;
+    background: oklch(var(--b1));
+    padding: 0.85rem 1rem;
+    text-align: left;
+  }
+  .scoreboard-editor__card h3 {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    margin: 0 0 0.55rem;
+  }
+  .scoreboard-editor__help {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    margin: 0 0 0.65rem;
+    line-height: 1.4;
+  }
+  .sb-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    min-height: 2.25rem;
+    padding: 0.45rem;
+    border-radius: 0.5rem;
+    border: 1px dashed oklch(var(--bc) / 0.2);
+    background: oklch(var(--b2));
+    align-items: center;
+  }
+  .sb-strip__empty {
+    font-size: 0.75rem;
+    opacity: 0.55;
+    padding: 0.2rem 0.35rem;
+  }
+  .sb-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.35rem 0.25rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid oklch(var(--bc) / 0.15);
+    background: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .sb-chip button {
+    appearance: none;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    opacity: 0.55;
+    padding: 0 0.2rem;
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+  .sb-chip button:hover { opacity: 1; }
+  .sb-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .sb-palette__btn {
+    appearance: none;
+    border: 1px solid oklch(var(--bc) / 0.15);
+    background: #fff;
+    border-radius: 0.45rem;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .sb-palette__btn:hover:not(:disabled) {
+    border-color: oklch(var(--p));
+    background: oklch(var(--p) / 0.06);
+  }
+  .sb-palette__btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .sb-timers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+  }
+  @media (max-width: 520px) {
+    .sb-timers { grid-template-columns: 1fr; }
+  }
+  .editor-stage.is-playtesting .paint-bar {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  .editor-stage.is-playtesting .editor-grid {
+    pointer-events: none;
+  }
+  .editor-stage.is-playtesting .playtest-overlay {
+    pointer-events: auto;
+    cursor: crosshair;
+  }
+  .playtest-mob {
+    position: absolute;
+    /* size set in px from cell size in playtest.js (must be < one cell) */
+    width: 12px;
+    height: 12px;
+    margin: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #f48fb1, #c2185b);
+    border: 1.5px solid #880e4f;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    pointer-events: none;
+    box-sizing: border-box;
+  }
+  .playtest-mob__hp {
+    position: absolute;
+    left: 50%;
+    top: -5px;
+    transform: translateX(-50%);
+    width: 160%;
+    height: 2px;
+    background: #333;
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .playtest-mob__hp > i {
+    display: block;
+    height: 100%;
+    background: #69f0ae;
+    width: 100%;
+  }
+  .playtest-tower {
+    position: absolute;
+    /* left/top/width/height set per cell in playtest.js (full cell, no centering transform) */
+    margin: 0;
+    border-radius: 2px;
+    background: #1565c0;
+    border: 2px solid #0d47a1;
+    transform: none;
+    z-index: 3;
+    pointer-events: none;
+    box-sizing: border-box;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  }
+  .playtest-tower.is-damaged {
+    background: #1e4b8c;
+    border-color: #b71c1c;
+  }
+  .playtest-tower__hp {
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    top: 3px;
+    height: 3px;
+    background: #333;
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .playtest-tower__hp > i {
+    display: block;
+    height: 100%;
+    background: #81c784;
+    width: 100%;
+  }
+  .playtest-shot {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ffeb3b;
+    transform: translate(-50%, -50%);
+    z-index: 6;
+    pointer-events: none;
+  }
+  .playtest-bar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem 0.65rem;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    background: #1e293b;
+    color: #e2e8f0;
+    z-index: 20;
+    overflow: visible;
+    position: relative;
+  }
+  .playtest-bar__label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.65;
+  }
+  .playtest-bar .btn {
+    min-height: 2rem;
+    height: 2rem;
+  }
+  .playtest-bar__stat {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    padding: 0.15rem 0.45rem;
+    border-radius: 0.35rem;
+    background: rgba(255, 255, 255, 0.08);
+    white-space: nowrap;
+  }
+  .playtest-bar__stat strong {
+    font-weight: 700;
+    color: #fff;
+  }
+  .playtest-bar__msg {
+    flex: 0 1 auto;
+    font-size: 0.75rem;
+    opacity: 0.85;
+    min-width: 0;
+    max-width: min(28rem, 100%);
+    text-align: center;
+  }
+  .playtest-bar__msg.is-error { color: #fca5a5; }
+  .playtest-bar__msg.is-ok { color: #86efac; }
+  .playtest-speed.is-active {
+    background: #334155 !important;
+    border-color: #94a3b8 !important;
+    color: #fff !important;
+  }
+  .playtest-place-menu {
+    position: fixed;
+    z-index: 90;
+    min-width: 11rem;
+    max-width: min(16rem, calc(100vw - 1rem));
+    padding: 0.35rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    background: #ffffff;
+    color: #1f2937;
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.12),
+      0 12px 28px -6px rgba(0, 0, 0, 0.2);
+  }
+  .playtest-place-menu[hidden] {
+    display: none !important;
+  }
+  .playtest-place-menu__title {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    padding: 0.25rem 0.45rem 0.35rem;
+  }
+  .playtest-place-menu__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    border: none;
+    border-radius: 0.35rem;
+    background: transparent;
+    color: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .playtest-place-menu__item:hover:not(:disabled) {
+    background: #f3f4f6;
+  }
+  .playtest-place-menu__item--danger .playtest-place-menu__name {
+    color: #b91c1c;
+  }
+  .playtest-place-menu__item--danger:hover:not(:disabled) {
+    background: #fef2f2;
+  }
+  .playtest-place-menu__item:disabled,
+  .playtest-place-menu__item.is-unaffordable {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: grayscale(0.4);
+  }
+  .playtest-place-menu__name {
+    font-weight: 600;
+    min-width: 0;
+  }
+  .playtest-place-menu__meta {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    white-space: nowrap;
+  }
+  .playtest-place-menu__cancel {
+    width: 100%;
+    margin-top: 0.2rem;
+    padding: 0.35rem 0.5rem;
+    border: none;
+    border-radius: 0.35rem;
+    background: #f3f4f6;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+  .playtest-place-menu__cancel:hover {
+    background: #e5e7eb;
+  }
+  .editor-grid {
+    display: grid;
+    gap: 1px;
+    background: oklch(var(--bc) / 0.15);
+    border: 2px solid oklch(var(--bc) / 0.2);
+    box-shadow: 0 8px 30px oklch(0% 0 0 / 0.12);
+    user-select: none;
+    touch-action: none;
+  }
+  .editor-cell {
+    width: var(--cell, 28px);
+    height: var(--cell, 28px);
+    cursor: crosshair;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 1px rgb(0 0 0 / 0.45);
+    line-height: 1;
+  }
+  .editor-cell[data-kind="ground"]  { background: #7cb342; color: transparent; text-shadow: none; }
+  .editor-cell[data-kind="path"]    { background: #bcaaa4; color: transparent; text-shadow: none; }
+  .editor-cell[data-kind="tower"]   { background: #42a5f5; color: transparent; text-shadow: none; }
+  .editor-cell[data-kind="blocked"] { background: #546e7a; color: transparent; text-shadow: none; }
+  .editor-cell[data-kind="spawn"]   { background: #ff9800; }
+  .editor-cell[data-kind="exit"]    { background: #e53935; }
+  .editor-cell.is-selected-portal {
+    outline: 2px solid #fff;
+    outline-offset: -2px;
+    box-shadow:
+      inset 0 0 0 2px #5b21b6,
+      0 0 0 2px #5b21b6;
+    z-index: 1;
+    position: relative;
+  }
+  .palette-tree > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .palette-tree > summary::-webkit-details-marker { display: none; }
+  .palette-tree > summary .chevron {
+    transition: transform 0.15s ease;
+  }
+  .palette-tree:not([open]) > summary .chevron {
+    transform: rotate(-90deg);
+  }
+  .entity-card.is-selected {
+    border-color: oklch(var(--p));
+    box-shadow: 0 0 0 1px oklch(var(--p));
+  }
+  /* Nested tower/monster type disclosures */
+  .entity-disclosure {
+    border-radius: 0.5rem;
+    border: 1px solid oklch(var(--bc) / 0.15);
+    background: oklch(var(--b1));
+    overflow: hidden;
+  }
+  .entity-disclosure > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.55rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .entity-disclosure > summary::-webkit-details-marker { display: none; }
+  .entity-disclosure > summary:hover {
+    background: oklch(var(--b2));
+  }
+  .entity-disclosure[open] > summary {
+    border-bottom: 1px solid oklch(var(--bc) / 0.1);
+    background: oklch(var(--b2));
+  }
+  .entity-disclosure .chevron {
+    width: 1rem;
+    height: 1rem;
+    opacity: 0.55;
+    flex: 0 0 auto;
+    transition: transform 0.15s ease;
+  }
+  .entity-disclosure:not([open]) > summary .chevron {
+    transform: rotate(-90deg);
+  }
+  .entity-disclosure__meta {
+    margin-left: auto;
+    font-size: 0.7rem;
+    font-weight: 500;
+    opacity: 0.55;
+    white-space: nowrap;
+  }
+  .entity-disclosure__body {
+    padding: 0.55rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    background: oklch(var(--b2) / 0.45);
+  }
+  /* Play button playability tooltip (DaisyUI tooltip above the button) */
+  #pt-play-wrap {
+    display: inline-flex;
+    position: relative;
+    z-index: 30;
+  }
+  #pt-play-wrap.tooltip {
+    --tooltip-color: #fef3c7;
+    --tooltip-text-color: #78350f;
+  }
+  #pt-play-wrap.tooltip:before {
+    white-space: pre-wrap;
+    width: 11rem;
+    max-width: 11rem;
+    text-align: left;
+    line-height: 1.35;
+    font-size: 0.68rem;
+    font-weight: 500;
+    padding: 0.5rem 0.55rem;
+    border: 1px solid #f59e0b;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+    z-index: 40;
+  }
+  #pt-play-wrap.tooltip:after {
+    z-index: 40;
+  }
+  #pt-play .pt-btn-icon {
+    display: inline-block;
+    width: 0.9em;
+    height: 0.9em;
+    margin-right: 0.35em;
+    vertical-align: -0.08em;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div
+  id="editor-app"
+  class="editor-shell"
+  data-draft-url="{% url 'draft_api' %}"
+  data-stash-url="{% url 'stash_and_signup' %}"
+  data-game-create-url="{% url 'game_create' %}"
+  {% if owned_game %}data-game-save-url="{% url 'game_save' owned_game.pk %}" data-game-id="{{ owned_game.pk }}"{% endif %}
+  data-is-guest="{% if is_guest %}1{% else %}0{% endif %}"
+  data-is-auth="{% if user.is_authenticated %}1{% else %}0{% endif %}"
+>
+  {# ── Left palette ─────────────────────────────────────────── #}
+  <aside class="editor-palette" aria-label="Editor palette">
+    <div class="editor-palette__header p-3 border-b border-base-300 bg-base-100">
+      <div class="flex items-center gap-2">
+        <input
+          id="game-title"
+          type="text"
+          class="input input-sm input-bordered flex-1 font-semibold"
+          maxlength="120"
+          value="{{ game_document.title }}"
+          aria-label="Game title"
+        >
+        {% if user.is_authenticated %}
+          {% if owned_game %}
+            <button type="button" id="btn-save-game" class="btn btn-primary btn-sm btn-square" title="Save game" aria-label="Save game">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            </button>
+          {% else %}
+            <button type="button" id="btn-save-new" class="btn btn-primary btn-sm btn-square" title="Save to account" aria-label="Save to account">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            </button>
+          {% endif %}
+        {% endif %}
+        <span id="save-status" class="text-xs opacity-60 whitespace-nowrap" aria-live="polite">Ready</span>
+      </div>
+    </div>
+
+    <div class="editor-palette__scroll p-2 space-y-2">
+      {# ── Game settings ── #}
+      <details class="palette-tree rounded-lg border border-base-300 bg-base-100" open id="game-settings-tree" data-panel="game-settings">
+        <summary class="flex items-center gap-2 px-3 py-2 font-semibold text-sm hover:bg-base-200 rounded-lg">
+          <svg class="chevron w-4 h-4 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+          </svg>
+          Game settings
+        </summary>
+        <div class="px-3 pb-3 pt-1 space-y-3 border-t border-base-300">
+          <fieldset class="space-y-2">
+            <legend class="text-xs font-semibold opacity-70 px-0">Game type</legend>
+            <label class="flex items-start gap-2 cursor-pointer p-2 rounded-lg border border-base-300 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+              <input type="radio" name="game-type" class="radio radio-sm mt-0.5" value="monster_march" id="gt-march"
+                     {% if game_document.settings.game_type != 'monster_rush' and game_document.settings.game_type != 'defend_the_castle' %}checked{% endif %}>
+              <span class="text-sm leading-snug">
+                <span class="font-medium">Monster March</span>
+                <span class="block text-[11px] opacity-60">Monsters follow the painted path toward an exit.</span>
+              </span>
+            </label>
+            <div class="rounded-lg border border-base-300 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/5 p-2 space-y-2 min-w-0">
+              <label class="flex items-start gap-2 cursor-pointer">
+                <input type="radio" name="game-type" class="radio radio-sm mt-0.5 shrink-0" value="monster_rush" id="gt-rush"
+                       {% if game_document.settings.game_type == 'monster_rush' %}checked{% endif %}>
+                <span class="text-sm leading-snug min-w-0 flex-1 whitespace-normal break-words">
+                  <span class="font-medium">Monster Rush</span>
+                  <span class="block text-[11px] opacity-60 whitespace-normal break-words">No fixed path. Players maze with towers &amp; walls. If blocked, monsters attack obstacles on the shortest route to the exit; when a free path opens they follow it and stop attacking.</span>
+                </span>
+              </label>
+              <div id="chaos-mode-wrap" class="ml-6 pl-2 border-l-2 border-base-300 min-w-0">
+                <label class="flex cursor-pointer justify-start gap-2 py-0.5 items-start w-full min-w-0 {% if game_document.settings.game_type != 'monster_rush' %}opacity-50{% endif %}" id="chaos-mode-label">
+                  <input id="set-chaos-mode" type="checkbox" class="toggle toggle-sm toggle-secondary mt-0.5 shrink-0"
+                         {% if game_document.settings.chaos_mode %}checked{% endif %}
+                         {% if game_document.settings.game_type != 'monster_rush' %}disabled{% endif %}>
+                  <span class="text-sm leading-snug min-w-0 flex-1 whitespace-normal break-words">
+                    Chaos mode
+                    <span class="block text-[11px] opacity-60 whitespace-normal break-words mt-0.5">
+                      Monsters keep destroying walls and towers along the shortest path to the exit even after a free lane exists.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+            <label class="flex items-start gap-2 cursor-pointer p-2 rounded-lg border border-base-300 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+              <input type="radio" name="game-type" class="radio radio-sm mt-0.5" value="defend_the_castle" id="gt-castle"
+                     {% if game_document.settings.game_type == 'defend_the_castle' %}checked{% endif %}>
+              <span class="text-sm leading-snug">
+                <span class="font-medium">Defend the Castle</span>
+                <span class="block text-[11px] opacity-60">Monsters try to destroy a central tower (the castle) rather than only marching off the map.</span>
+              </span>
+            </label>
+          </fieldset>
+
+          <label class="form-control w-full">
+            <span class="label-text text-xs">Grid width</span>
+            <input id="set-width" type="number" min="5" max="60" class="input input-sm input-bordered" value="{{ game_document.settings.width }}">
+          </label>
+          <label class="form-control w-full">
+            <span class="label-text text-xs">Grid height</span>
+            <input id="set-height" type="number" min="5" max="40" class="input input-sm input-bordered" value="{{ game_document.settings.height }}">
+          </label>
+          <label class="label cursor-pointer justify-start gap-3 py-1">
+            <input id="set-ground-build" type="checkbox" class="toggle toggle-sm toggle-primary"
+                   {% if game_document.settings.allow_ground_build %}checked{% endif %}>
+            <span class="label-text text-sm leading-snug">
+              Allow building on bare ground
+              <span class="block text-[11px] opacity-50">Off = towers only on tower pads</span>
+            </span>
+          </label>
+          <label class="form-control w-full">
+            <span class="label-text text-xs">Starting lives</span>
+            <input id="set-lives" type="number" min="1" max="999" class="input input-sm input-bordered" value="{{ game_document.settings.starting_lives }}">
+          </label>
+          <label class="form-control w-full">
+            <span class="label-text text-xs">Starting gold</span>
+            <input id="set-gold" type="number" min="0" max="1000000" class="input input-sm input-bordered" value="{{ game_document.settings.starting_gold }}">
+          </label>
+        </div>
+      </details>
+
+      {# ── Waves ── #}
+      <details class="palette-tree rounded-lg border border-base-300 bg-base-100" open id="waves-tree" data-panel="waves">
+        <summary class="flex items-center gap-2 px-3 py-2 font-semibold text-sm hover:bg-base-200 rounded-lg">
+          <svg class="chevron w-4 h-4 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+          </svg>
+          Waves
+          <span id="wave-type-count" class="badge badge-sm badge-ghost ml-auto">0</span>
+        </summary>
+        <div class="px-2 pb-3 pt-1 space-y-2 border-t border-base-300">
+          <p class="text-[11px] opacity-70 leading-snug px-1">
+            <strong>Round</strong> = game round number (1, 2, 3…).
+            <strong>Appearance</strong> = the Nth time <em>this</em> wave type is used
+            (e.g. Goblin wave on rounds 1, 3, 5 → those are appearances 1, 2, 3).
+            Scaling can use appearance or round.
+          </p>
+          <div id="wave-type-list" class="space-y-2"></div>
+          <button type="button" id="btn-add-wave-type" class="btn btn-sm btn-outline btn-block">+ Add wave type</button>
+        </div>
+      </details>
+
+      {# ── Spawns & exits ── #}
+      <details class="palette-tree rounded-lg border border-base-300 bg-base-100" open id="portals-tree" data-panel="portals">
+        <summary class="flex items-center gap-2 px-3 py-2 font-semibold text-sm hover:bg-base-200 rounded-lg">
+          <svg class="chevron w-4 h-4 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+          </svg>
+          Spawns &amp; exits
+          <span id="portal-count" class="badge badge-sm badge-ghost ml-auto">0</span>
+        </summary>
+        <div class="px-2 pb-3 pt-1 space-y-3 border-t border-base-300">
+          <div id="completeness-banner" class="alert alert-warning text-xs py-2 px-3" role="status">
+            <span id="completeness-text">A complete game needs <strong>at least 1 Spawn</strong> and <strong>1 Exit</strong>.</span>
+          </div>
+          <p class="text-[11px] opacity-60 leading-snug px-1">
+            <strong>Required:</strong> paint at least one Spawn and one Exit from the bar above the grid.
+            Multiple allowed — rename ids here. Shift+click a portal on the map to select it.
+          </p>
+
+          <div>
+            <p class="text-[11px] font-semibold uppercase tracking-wide opacity-60 px-1 mb-1">
+              Spawns <span id="spawn-req" class="normal-case font-normal opacity-70">(need ≥1)</span>
+            </p>
+            <div id="spawn-list" class="space-y-1"></div>
+            <p id="spawn-empty" class="text-[11px] text-warning px-1">No spawns yet — paint a Spawn cell.</p>
+          </div>
+          <div>
+            <p class="text-[11px] font-semibold uppercase tracking-wide opacity-60 px-1 mb-1">
+              Exits <span id="exit-req" class="normal-case font-normal opacity-70">(need ≥1)</span>
+            </p>
+            <div id="exit-list" class="space-y-1"></div>
+            <p id="exit-empty" class="text-[11px] text-warning px-1">No exits yet — paint an Exit cell.</p>
+          </div>
+
+          <div id="portal-editor" class="hidden rounded-md border border-base-300 p-2 space-y-2 bg-base-200/50">
+            <p class="text-xs font-semibold opacity-70" id="portal-editor-title">Edit portal</p>
+            <label class="form-control w-full">
+              <span class="label-text text-[10px]">Id <span class="opacity-50">(letters, numbers, _ -)</span></span>
+              <input id="portal-id" type="text" maxlength="32" pattern="[A-Za-z0-9_-]+"
+                     class="input input-xs input-bordered w-full" placeholder="1">
+            </label>
+            <p class="text-[11px] opacity-60" id="portal-pos">Position: —</p>
+
+            <div id="spawn-exit-settings" class="hidden space-y-2">
+              <p class="text-[11px] font-semibold opacity-70">Monster exit target</p>
+              <label class="label cursor-pointer justify-start gap-2 py-0">
+                <input type="radio" name="spawn-exit-mode" id="spawn-exit-any" value="any" class="radio radio-xs" checked>
+                <span class="label-text text-xs">Any exit</span>
+              </label>
+              <label class="label cursor-pointer justify-start gap-2 py-0">
+                <input type="radio" name="spawn-exit-mode" id="spawn-exit-specific" value="specific" class="radio radio-xs">
+                <span class="label-text text-xs">Specific exit</span>
+              </label>
+              <label class="form-control w-full" id="spawn-exit-pick-wrap">
+                <span class="label-text text-[10px]">Required exit</span>
+                <select id="spawn-exit-id" class="select select-xs select-bordered w-full" disabled>
+                  <option value="">— select exit —</option>
+                </select>
+              </label>
+            </div>
+
+            <p id="portal-error" class="text-[11px] text-error hidden"></p>
+          </div>
+        </div>
+      </details>
+
+      {# ── Towers (collapsible tree) ── #}
+      <details class="palette-tree rounded-lg border border-base-300 bg-base-100" open id="towers-tree" data-panel="towers">
+        <summary class="flex items-center gap-2 px-3 py-2 font-semibold text-sm hover:bg-base-200 rounded-lg">
+          <svg class="chevron w-4 h-4 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+          </svg>
+          Towers
+          <span id="tower-count" class="badge badge-sm badge-ghost ml-auto">0</span>
+        </summary>
+        <div class="px-2 pb-3 pt-1 space-y-2 border-t border-base-300">
+          <div id="tower-list" class="space-y-2"></div>
+          <button type="button" id="btn-add-tower" class="btn btn-sm btn-outline btn-block">+ Add tower</button>
+        </div>
+      </details>
+
+      {# ── Monsters (collapsible tree) ── #}
+      <details class="palette-tree rounded-lg border border-base-300 bg-base-100" open id="monsters-tree" data-panel="monsters">
+        <summary class="flex items-center gap-2 px-3 py-2 font-semibold text-sm hover:bg-base-200 rounded-lg">
+          <svg class="chevron w-4 h-4 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+          </svg>
+          Monsters
+          <span id="monster-count" class="badge badge-sm badge-ghost ml-auto">0</span>
+        </summary>
+        <div class="px-2 pb-3 pt-1 space-y-2 border-t border-base-300">
+          <div id="monster-list" class="space-y-2"></div>
+          <button type="button" id="btn-add-monster" class="btn btn-sm btn-outline btn-block">+ Add monster</button>
+        </div>
+      </details>
+    </div>
+  </aside>
+
+  {# ── Stage: playfield / scoreboard tabs ───────────────────── #}
+  <section class="editor-stage" aria-label="Map stage">
+    <div class="stage-tabs" role="tablist" aria-label="Game pane">
+      <button type="button" class="stage-tab is-active" role="tab" aria-selected="true" data-stage-tab="playfield" id="tab-playfield">Playfield</button>
+      <button type="button" class="stage-tab" role="tab" aria-selected="false" data-stage-tab="scoreboard" id="tab-scoreboard">Scoreboard</button>
+    </div>
+
+    <div class="stage-panel is-active" id="stage-panel-playfield" role="tabpanel" aria-labelledby="tab-playfield">
+      <div class="paint-bar" aria-label="Paint tools and game type">
+        <p class="paint-bar__hint" id="terrain-hint">
+          Click a color to paint; click the same type again to clear to ground. Path is primary in Monster March; walls shape mazes in Monster Rush.
+        </p>
+        <div class="paint-bar__row" role="toolbar" aria-label="Paint palette">
+          <span class="paint-bar__label">Paint</span>
+          <div class="paint-bar__tools" id="tool-group">
+            <button type="button" class="paint-swatch is-active" data-tool="spawn" aria-pressed="true" title="Monster spawn (required)">
+              <span class="paint-swatch__chip" style="background:#ff9800"></span> Spawn
+            </button>
+            <button type="button" class="paint-swatch" data-tool="exit" aria-pressed="false" title="Monster exit (required)">
+              <span class="paint-swatch__chip" style="background:#e53935"></span> Exit
+            </button>
+            <button type="button" class="paint-swatch" data-tool="path" aria-pressed="false" title="Monster path (Monster March)">
+              <span class="paint-swatch__chip" style="background:#bcaaa4"></span> Path
+            </button>
+            <button type="button" class="paint-swatch" data-tool="tower" aria-pressed="false" title="Tower pad">
+              <span class="paint-swatch__chip" style="background:#42a5f5"></span> Tower pad
+            </button>
+            <button type="button" class="paint-swatch" data-tool="ground" aria-pressed="false" title="Bare ground">
+              <span class="paint-swatch__chip" style="background:#7cb342"></span> Ground
+            </button>
+            <button type="button" class="paint-swatch" data-tool="blocked" aria-pressed="false" title="Wall / blocked (mazes in Monster Rush)">
+              <span class="paint-swatch__chip" style="background:#546e7a"></span> Wall
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="game-info-bar" id="game-info-bar" aria-label="Game scoreboard"></div>
+      <div class="editor-stage__canvas">
+        <div class="map-frame" id="map-frame">
+          <div id="editor-grid" class="editor-grid" role="grid" aria-label="Map cells"></div>
+          <div id="playtest-overlay" class="playtest-overlay" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage-panel" id="stage-panel-scoreboard" role="tabpanel" aria-labelledby="tab-scoreboard" hidden>
+      <div class="game-info-bar game-info-bar--preview" id="game-info-bar-preview" aria-label="Scoreboard preview"></div>
+      <div class="scoreboard-editor">
+        <div class="scoreboard-editor__card">
+          <h3>On the scoreboard</h3>
+          <p class="scoreboard-editor__help">
+            Standard layout for every OpenTD game. Items appear left → right in this order during play.
+          </p>
+          <div class="sb-strip" id="sb-on-board" aria-label="Enabled scoreboard items"></div>
+        </div>
+        <div class="scoreboard-editor__card">
+          <h3>Available widgets</h3>
+          <p class="scoreboard-editor__help">Click to add a widget to the scoreboard. Each type can appear once.</p>
+          <div class="sb-palette" id="sb-palette" aria-label="Scoreboard widget palette"></div>
+        </div>
+        <div class="scoreboard-editor__card">
+          <h3>Wave timers</h3>
+          <p class="scoreboard-editor__help">
+            Countdown before the first wave, and after a wave is cleared. The Countdown widget shows the active timer.
+          </p>
+          <div class="sb-timers">
+            <label class="form-control w-full">
+              <span class="label-text text-xs">Start-of-game delay (seconds)</span>
+              <input id="set-start-delay" type="number" min="0" max="120" class="input input-sm input-bordered"
+                     value="{{ game_document.settings.start_delay_seconds|default:15 }}">
+            </label>
+            <label class="form-control w-full">
+              <span class="label-text text-xs">Between-waves delay (seconds)</span>
+              <input id="set-wave-delay" type="number" min="0" max="120" class="input input-sm input-bordered"
+                     value="{{ game_document.settings.between_waves_delay_seconds|default:5 }}">
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="playtest-place-menu" class="playtest-place-menu" hidden role="menu" aria-label="Place item"></div>
+
+    {# ── Playtest controls ── #}
+    <div class="playtest-bar" id="playtest-bar" role="toolbar" aria-label="Playtest controls">
+      <span class="playtest-bar__label">Playtest</span>
+      <span id="pt-play-wrap" class="">
+        <button type="button" id="pt-play" class="btn btn-sm btn-success" data-play-label="Play" title="Start or resume playtest">
+          <svg class="pt-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 5v14l11-7z"/></svg><span>Play</span>
+        </button>
+      </span>
+      <button type="button" id="pt-pause" class="btn btn-sm btn-warning" title="Pause" disabled>Pause</button>
+      <button type="button" id="pt-stop" class="btn btn-sm btn-error btn-outline" title="Stop and return to edit" disabled>Stop</button>
+      <button type="button" id="pt-wave" class="btn btn-sm btn-info btn-outline" title="Spawn a wave now" disabled>Wave</button>
+      <div class="join" role="group" aria-label="Simulation speed">
+        <button type="button" class="btn btn-sm btn-ghost join-item playtest-speed is-active" data-speed="1">1×</button>
+        <button type="button" class="btn btn-sm btn-ghost join-item playtest-speed" data-speed="2">2×</button>
+        <button type="button" class="btn btn-sm btn-ghost join-item playtest-speed" data-speed="4">4×</button>
+      </div>
+      <span class="playtest-bar__stat" title="Lives remaining">❤ <strong id="pt-lives">—</strong></span>
+      <span class="playtest-bar__stat" title="Gold">🪙 <strong id="pt-gold">—</strong></span>
+      <span class="playtest-bar__stat" title="Wave number">Wave <strong id="pt-wave-num">0</strong></span>
+      <span class="playtest-bar__stat" title="Monsters alive">Mobs <strong id="pt-mobs">0</strong></span>
+      <span class="playtest-bar__msg" id="pt-msg">Ready — press Play to test this map.</span>
+    </div>
+  </section>
+</div>
+
+<script id="initial-game-document" type="application/json">{{ game_document_json|safe }}</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/design_validate.js' %}"></script>
+<script src="{% static 'js/playtest.js' %}"></script>
+<script src="{% static 'js/editor.js' %}"></script>
+<script>
+  document.body.classList.add("editor-body");
+</script>
+{% endblock %}

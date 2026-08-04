@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block page_title %}Email — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto px-4 py-12">
+  <div class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body space-y-6">
+      <h1 class="card-title text-2xl">{% trans "Email Addresses" %}</h1>
+
+      {% if user.emailaddress_set.all %}
+        <p class="text-sm opacity-70">{% trans "The following email addresses are associated with your account:" %}</p>
+        <form action="{% url 'account_email' %}" method="post" class="space-y-3">
+          {% csrf_token %}
+          {% for emailaddress in user.emailaddress_set.all %}
+            <label class="flex items-center gap-3 p-3 rounded-lg border border-base-300 cursor-pointer hover:bg-base-200">
+              <input type="radio" name="email" value="{{ emailaddress.email }}"
+                     class="radio radio-sm"
+                     {% if emailaddress.primary or user.emailaddress_set.count == 1 %}checked{% endif %}>
+              <span class="flex-1">
+                {{ emailaddress.email }}
+                {% if emailaddress.verified %}
+                  <span class="badge badge-success badge-sm ml-1">{% trans "Verified" %}</span>
+                {% else %}
+                  <span class="badge badge-warning badge-sm ml-1">{% trans "Unverified" %}</span>
+                {% endif %}
+                {% if emailaddress.primary %}
+                  <span class="badge badge-primary badge-sm ml-1">{% trans "Primary" %}</span>
+                {% endif %}
+              </span>
+            </label>
+          {% endfor %}
+          <div class="flex flex-wrap gap-2">
+            <button type="submit" name="action_primary" class="btn btn-sm btn-primary">{% trans "Make Primary" %}</button>
+            <button type="submit" name="action_send" class="btn btn-sm btn-outline">{% trans "Re-send Verification" %}</button>
+            <button type="submit" name="action_remove" class="btn btn-sm btn-error btn-outline">{% trans "Remove" %}</button>
+          </div>
+        </form>
+      {% else %}
+        <p class="opacity-70">{% trans "You currently do not have any email address set up." %}</p>
+      {% endif %}
+
+      <div class="divider"></div>
+      <h2 class="font-semibold">{% trans "Add Email Address" %}</h2>
+      <form method="post" action="{% url 'account_email' %}" class="space-y-4">
+        {% csrf_token %}
+        <label class="form-control w-full">
+          <span class="label-text">{% trans "Email" %}</span>
+          <input type="email" name="email" required
+                 class="input input-bordered w-full {% if form.email.errors %}input-error{% endif %}">
+          {% for error in form.email.errors %}
+            <span class="label-text-alt text-error">{{ error }}</span>
+          {% endfor %}
+        </label>
+        <button type="submit" name="action_add" class="btn btn-primary btn-sm">{% trans "Add Email" %}</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock content %}

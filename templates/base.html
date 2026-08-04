@@ -1,0 +1,137 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" data-theme="light" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {# htmx 4 — https://four.htmx.org #}
+  <script
+    src="{% static 'js/htmx.min.js' %}"
+    defer
+  ></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="{% static 'css/output.css' %}" rel="stylesheet">
+  <title>{% block page_title %}{{ site_name }}{% endblock page_title %}</title>
+  {% block extra_head %}{% endblock extra_head %}
+</head>
+<body class="min-h-screen flex flex-col bg-base-100 text-base-content font-sans" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+
+  <header class="navbar bg-base-100 border-b border-base-300 px-4 lg:px-8">
+    <div class="navbar-start gap-1">
+      <a href="{% url 'home' %}" class="btn btn-ghost text-xl font-semibold tracking-tight">
+        {{ site_name }}
+      </a>
+      <a href="{% url 'editor' %}" class="btn btn-ghost btn-sm hidden sm:inline-flex">Editor</a>
+    </div>
+    <div class="navbar-end gap-1 sm:gap-2">
+      {% if user.is_authenticated %}
+        <span class="hidden sm:inline text-sm opacity-70">{{ user.email }}</span>
+        <a href="{% url 'account_email' %}" class="btn btn-ghost btn-sm">Account</a>
+        <form method="post" action="{% url 'account_logout' %}" class="inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-outline btn-sm">Log out</button>
+        </form>
+      {% else %}
+        <a href="{% url 'account_login' %}" class="btn btn-ghost btn-sm">Log in</a>
+        <div class="flex items-center gap-0.5">
+          <a
+            href="{% url 'account_signup' %}"
+            id="nav-signup-save"
+            class="btn btn-primary btn-sm"
+            data-signup-url="{% url 'account_signup' %}"
+          >Sign up to save</a>
+          <span class="nav-signup-help relative inline-flex items-center">
+            <button
+              type="button"
+              class="btn btn-ghost btn-circle btn-xs text-base font-semibold opacity-70 hover:opacity-100"
+              aria-label="Why sign up?"
+              aria-describedby="nav-signup-help-tip"
+            >?</button>
+            <span
+              id="nav-signup-help-tip"
+              role="tooltip"
+              class="nav-signup-help__tip"
+            >
+              Build freely without an account. Sign up to <strong>save your game</strong> after email verification,
+              keep a library of maps, and unlock features for your players like <strong>leaderboards</strong>.
+              We’ll hold your current editor work while you verify.
+            </span>
+          </span>
+        </div>
+      {% endif %}
+    </div>
+  </header>
+
+  <style>
+    .nav-signup-help {
+      z-index: 70;
+    }
+    .nav-signup-help__tip {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 0.4rem);
+      z-index: 80;
+      width: min(18rem, calc(100vw - 2rem));
+      padding: 0.75rem 0.85rem;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      /* Solid opaque fill so content under the tip is fully blocked */
+      background-color: #ffffff;
+      background-image: none;
+      color: #1f2937;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      font-weight: 400;
+      text-align: left;
+      box-shadow:
+        0 4px 6px -1px rgba(0, 0, 0, 0.1),
+        0 10px 28px -4px rgba(0, 0, 0, 0.18);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-4px);
+      transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+      pointer-events: none;
+      isolation: isolate;
+    }
+    .nav-signup-help:hover .nav-signup-help__tip,
+    .nav-signup-help:focus-within .nav-signup-help__tip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+  </style>
+
+  {% if messages %}
+    <div class="toast toast-top toast-center z-50 mt-16" id="flash-toasts">
+      {% for message in messages %}
+        <div role="alert"
+             class="alert {% if message.tags == 'error' %}alert-error{% elif message.tags == 'success' %}alert-success{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %} shadow-lg max-w-md">
+          <span>{{ message }}</span>
+          <button type="button"
+                  class="btn btn-sm btn-circle btn-ghost"
+                  onclick="this.closest('[role=alert]').remove()"
+                  aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <main class="flex-1 w-full">
+    {% block content %}{% endblock content %}
+  </main>
+
+  <footer class="footer footer-center p-6 bg-base-200 text-base-content border-t border-base-300">
+    <aside>
+      <p class="font-semibold">{{ site_name }}</p>
+      <p class="text-sm opacity-70">Create tower defense games that run in the browser.</p>
+      <p class="text-xs opacity-50">&copy; {% now "Y" %} {{ site_name }}</p>
+    </aside>
+  </footer>
+
+  {% block extra_js %}{% endblock extra_js %}
+</body>
+</html>

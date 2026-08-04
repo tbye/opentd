@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ site_name }} — Browser tower defense{% endblock %}
+
+{% block content %}
+<section class="hero min-h-[50vh] bg-base-200">
+  <div class="hero-content text-center">
+    <div class="max-w-2xl">
+      <h1 class="text-4xl sm:text-5xl font-bold tracking-tight">
+        Build a tower defense game in your browser
+      </h1>
+      <p class="py-6 text-lg opacity-80">
+        Jump straight into the editor — no account required.
+        Sign up only when you want to keep your map.
+      </p>
+      <div class="flex flex-wrap gap-3 justify-center">
+        <a href="{% url 'editor' %}" class="btn btn-primary btn-lg">Start building</a>
+        {% if not user.is_authenticated %}
+          <a href="{% url 'account_login' %}" class="btn btn-outline btn-lg">Log in</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+{% if user.is_authenticated %}
+<section class="max-w-4xl mx-auto px-4 py-10">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-semibold">Your games</h2>
+    <a href="{% url 'editor' %}" class="btn btn-sm btn-primary">New game</a>
+  </div>
+  {% if games %}
+    <ul class="grid sm:grid-cols-2 gap-3">
+      {% for game in games %}
+        <li>
+          <a href="{% url 'editor' %}?game={{ game.pk }}"
+             class="card bg-base-100 border border-base-300 hover:border-primary transition-colors">
+            <div class="card-body py-4">
+              <h3 class="card-title text-base">{{ game.title }}</h3>
+              <p class="text-xs opacity-60">Updated {{ game.updated_at|timesince }} ago</p>
+            </div>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="alert">
+      <span>No saved games yet. Open the editor and hit <strong>Save to account</strong>.</span>
+    </div>
+  {% endif %}
+</section>
+{% else %}
+<section class="max-w-3xl mx-auto px-4 py-12">
+  <div class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title">How saving works</h2>
+      <ol class="list-decimal list-inside space-y-2 opacity-80">
+        <li>Design paths, tower pads, and ground in the editor as a guest.</li>
+        <li>Click <strong>Sign up to save</strong> — we stash your work for this browser session.</li>
+        <li>Verify your email — your game is attached to your account automatically.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endblock content %}

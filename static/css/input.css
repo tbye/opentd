@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@source not "./tailwindcss";
+@source not "./daisyui{,*}.mjs";
+@source "../../templates/**/*.html";
+@source "../../**/templates/**/*.html";
+
+@plugin "./daisyui.mjs" {
+  themes: light --default, dark --prefersdark;
+};
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}

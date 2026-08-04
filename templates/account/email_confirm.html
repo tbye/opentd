@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% load account %}
+
+{% block page_title %}Confirm email — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto px-4 py-12">
+  <div class="card bg-base-100 border border-base-300 shadow-sm">
+    <div class="card-body">
+      <h1 class="card-title text-2xl">{% trans "Confirm Email Address" %}</h1>
+
+      {% if confirmation %}
+        {% user_display confirmation.email_address.user as user_display %}
+        {% if can_confirm %}
+          <p class="opacity-80">
+            {% blocktrans with confirmation.email_address.email as email %}
+            Please confirm that <a href="mailto:{{ email }}" class="link">{{ email }}</a> is an email address for user {{ user_display }}.
+            {% endblocktrans %}
+          </p>
+          <form method="post" action="{% url 'account_confirm_email' confirmation.key %}">
+            {% csrf_token %}
+            <div class="card-actions justify-end mt-4">
+              <button type="submit" class="btn btn-primary">{% trans "Confirm" %}</button>
+            </div>
+          </form>
+        {% else %}
+          <div class="alert alert-warning text-sm">
+            {% blocktrans %}Unable to confirm {{ email }} because it is already confirmed by a different account.{% endblocktrans %}
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="alert alert-error text-sm">
+          {% blocktrans %}This email confirmation link expired or is invalid. Please request a new verification email.{% endblocktrans %}
+        </div>
+        <div class="card-actions justify-end mt-4">
+          <a href="{% url 'account_email' %}" class="btn btn-primary btn-sm">{% trans "Account email" %}</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock content %}
