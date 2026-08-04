@@ -3,4 +3,4 @@ opentd.org is a platform allowing anyone to create a tower defense game that run
 
 ## Use of AI
 
-AI is apologetically used through out this project.  Human optimizations are encouraged and welcome. 
+AI is unapologetically used through out this project.  Human optimizations are encouraged and welcome. 
