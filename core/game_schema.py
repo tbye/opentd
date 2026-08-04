@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 import copy
+import json
 import re
 import uuid
 from typing import Any
+
+from .limits import (
+    GUEST_LIMITS,
+    MAX_DOCUMENT_BYTES,
+    MAX_ID_LEN,
+    REGISTERED_LIMITS,
+    TierLimits,
+)
+from .sanitize import clean_description, clean_id, clean_name, clean_title
 
 # Cell kinds painted on the map grid.
 CELL_GROUND = "ground"
@@ -26,8 +36,8 @@ CELL_KINDS = frozenset(
     }
 )
 
-# Spawn/exit public ids: letters, digits, underscore, hyphen (1–32 chars).
-ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+# Spawn/exit public ids: letters, digits, underscore, hyphen (1–24 chars).
+ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,24}$")
 
 EXIT_MODE_ANY = "any"
 EXIT_MODE_SPECIFIC = "specific"
@@ -224,7 +234,7 @@ def normalize_tower(raw: Any) -> dict[str, Any]:
 
     upgrade_of = str(raw.get("upgrade_of") or "").strip()[:40]
     # Self-reference is invalid
-    tower_id = str(raw.get("id") or base["id"])[:40]
+    tower_id = clean_id(raw.get("id") or base["id"], fallback=_new_id("twr"))
     if upgrade_of and upgrade_of == tower_id:
         upgrade_of = ""
 
@@ -234,16 +244,16 @@ def normalize_tower(raw: Any) -> dict[str, Any]:
 
     return {
         "id": tower_id,
-        "name": str(raw.get("name") or base["name"])[:40],
+        "name": clean_name(raw.get("name") or base["name"], default="Tower"),
         "cost": _clamp_int(raw.get("cost"), base["cost"], 0, 1_000_000),
         "damage": _clamp_int(raw.get("damage"), base["damage"], 0, 100_000),
         "range": _clamp_int(raw.get("range"), base["range"], 1, 40),
         "hp": _clamp_int(raw.get("hp"), base["hp"], 1, 1_000_000),
         "cooldown": cooldown,
-        "description": str(raw.get("description") or "")[:200],
+        "description": clean_description(raw.get("description") or ""),
         "weapon": normalize_weapon(raw.get("weapon")),
         "element": normalize_element(raw.get("element")),
-        "upgrade_of": upgrade_of,
+        "upgrade_of": clean_id(upgrade_of, fallback="") if upgrade_of else "",
         "upgrade_level": upgrade_level,
     }
 
@@ -405,8 +415,8 @@ def normalize_wave_type(raw: Any, *, monsters: list[dict[str, Any]] | None = Non
     rounds = str(raw.get("rounds") or base["rounds"]).strip()[:120] or "1-"
 
     return {
-        "id": str(raw.get("id") or base["id"])[:40],
-        "name": str(raw.get("name") or base["name"])[:40],
+        "id": clean_id(raw.get("id") or base["id"], fallback=_new_id("wav")),
+        "name": clean_name(raw.get("name") or base["name"], default="Wave"),
         "rounds": rounds,
         "groups": groups_out,
         "scaling": scaling_out,
@@ -414,7 +424,10 @@ def normalize_wave_type(raw: Any, *, monsters: list[dict[str, Any]] | None = Non
 
 
 def normalize_wave_types(
-    raw: Any, *, monsters: list[dict[str, Any]]
+    raw: Any,
+    *,
+    monsters: list[dict[str, Any]],
+    max_wave_types: int = 30,
 ) -> list[dict[str, Any]]:
     if not isinstance(raw, list) or not raw:
         # One default wave covering all rounds, using first monster
@@ -424,7 +437,7 @@ def normalize_wave_types(
             )
         ]
     out: list[dict[str, Any]] = []
-    for item in raw[:30]:
+    for item in raw[: max(1, max_wave_types)]:
         if isinstance(item, dict):
             out.append(normalize_wave_type(item, monsters=monsters))
     return out or [
@@ -501,23 +514,29 @@ def normalize_scoreboard(raw: Any) -> dict[str, Any]:
     return {"items": items}
 
 
-def normalize_game_document(raw: Any) -> dict[str, Any]:
+def document_byte_size(doc: dict[str, Any]) -> int:
+    return len(json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+
+
+def normalize_game_document(
+    raw: Any,
+    *,
+    limits: TierLimits | None = None,
+) -> dict[str, Any]:
     """
     Coerce arbitrary client JSON into a safe document.
 
     Unknown keys on the root are dropped; nested lists are validated lightly.
-    Raises ValueError for unusable payloads.
+    Raises ValueError for unusable or oversized payloads.
     """
+    caps = limits or GUEST_LIMITS
     if raw is None:
         return default_game_document()
     if not isinstance(raw, dict):
         raise ValueError("Game document must be a JSON object.")
 
     base = default_game_document()
-    title = raw.get("title", base["title"])
-    if not isinstance(title, str) or not title.strip():
-        title = base["title"]
-    title = title.strip()[:120]
+    title = clean_title(raw.get("title", base["title"]))
 
     settings_in = raw.get("settings") if isinstance(raw.get("settings"), dict) else {}
     settings = copy.deepcopy(base["settings"])
@@ -534,8 +553,9 @@ def normalize_game_document(raw: Any) -> dict[str, Any]:
                 settings[key] = cast(settings_in[key])
             except (TypeError, ValueError):
                 pass
-    settings["width"] = max(5, min(60, settings["width"]))
-    settings["height"] = max(5, min(40, settings["height"]))
+    # Keep maps small enough for browser playtest performance.
+    settings["width"] = max(5, min(40, settings["width"]))
+    settings["height"] = max(5, min(30, settings["height"]))
     settings["starting_lives"] = max(1, min(999, settings["starting_lives"]))
     settings["starting_gold"] = max(0, min(1_000_000, settings["starting_gold"]))
     settings["start_delay_seconds"] = max(
@@ -555,28 +575,41 @@ def normalize_game_document(raw: Any) -> dict[str, Any]:
         game_type = GAME_TYPE_MONSTER_MARCH
     settings["game_type"] = game_type
     settings["chaos_mode"] = bool(settings_in.get("chaos_mode", settings["chaos_mode"]))
-    # Chaos mode only applies to Monster Rush; keep stored value but it is ignored
-    # by other types at runtime.
-    if settings["game_type"] != GAME_TYPE_MONSTER_RUSH:
-        # Preserve value for when the designer switches back; no force-clear.
-        pass
 
     width, height = settings["width"], settings["height"]
+    grid_cells = width * height
     grid = _normalize_grid(raw.get("grid"), width, height)
-    towers = _normalize_entity_list(raw.get("towers"), kind="tower")
-    monsters = _normalize_entity_list(raw.get("monsters"), kind="monster")
+    towers = _normalize_entity_list(
+        raw.get("towers"), kind="tower", max_items=caps.max_towers
+    )
+    monsters = _normalize_entity_list(
+        raw.get("monsters"), kind="monster", max_items=caps.max_monsters
+    )
     if not monsters:
         monsters = [default_monster()]
     if not towers:
         towers = [default_tower()]
-    wave_types = normalize_wave_types(raw.get("wave_types"), monsters=monsters)
+    # Truncate again if defaults pushed over (shouldn't) — enforce hard caps
+    towers = towers[: caps.max_towers]
+    monsters = monsters[: caps.max_monsters]
+    wave_types = normalize_wave_types(
+        raw.get("wave_types"),
+        monsters=monsters,
+        max_wave_types=caps.max_wave_types,
+    )
+    wave_types = wave_types[: caps.max_wave_types]
     spawns, exits = _sync_portals(
         grid,
         raw.get("spawns"),
         raw.get("exits"),
     )
+    # Portal lists cannot exceed grid area (one portal per cell max).
+    if len(spawns) > grid_cells:
+        spawns = spawns[:grid_cells]
+    if len(exits) > grid_cells:
+        exits = exits[:grid_cells]
 
-    return {
+    doc = {
         "version": SCHEMA_VERSION,
         "title": title,
         "settings": settings,
@@ -588,6 +621,13 @@ def normalize_game_document(raw: Any) -> dict[str, Any]:
         "wave_types": wave_types,
         "scoreboard": normalize_scoreboard(raw.get("scoreboard")),
     }
+    size = document_byte_size(doc)
+    if size > MAX_DOCUMENT_BYTES:
+        raise ValueError(
+            f"Game document too large ({size} bytes; max {MAX_DOCUMENT_BYTES}). "
+            "Reduce map size or entity counts."
+        )
+    return doc
 
 
 def _normalize_grid(raw: Any, width: int, height: int) -> list[list[str]]:
@@ -608,12 +648,7 @@ def _normalize_grid(raw: Any, width: int, height: int) -> list[list[str]]:
 
 
 def _sanitize_portal_id(raw: Any, fallback: str) -> str:
-    text = str(raw).strip() if raw is not None else ""
-    if ID_RE.match(text):
-        return text
-    if ID_RE.match(fallback):
-        return fallback
-    return "1"
+    return clean_id(raw, fallback=fallback or "1")
 
 
 def _next_numeric_id(used: set[str]) -> str:
@@ -742,20 +777,22 @@ def completeness(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _normalize_entity_list(raw: Any, *, kind: str) -> list[dict[str, Any]]:
+def _normalize_entity_list(
+    raw: Any, *, kind: str, max_items: int = 20
+) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         return []
     out: list[dict[str, Any]] = []
-    for item in raw[:50]:
+    for item in raw[: max(1, max_items)]:
         if not isinstance(item, dict):
             continue
         if kind == "tower":
             out.append(normalize_tower(item))
         else:
             base = default_monster()
-            base["id"] = str(item.get("id") or base["id"])[:40]
-            base["name"] = str(item.get("name") or base["name"])[:40]
-            base["description"] = str(item.get("description") or "")[:200]
+            base["id"] = clean_id(item.get("id") or base["id"], fallback=_new_id("mob"))
+            base["name"] = clean_name(item.get("name") or base["name"], default="Monster")
+            base["description"] = clean_description(item.get("description") or "")
             for key in ("hp", "reward"):
                 try:
                     base[key] = int(item.get(key, base[key]))

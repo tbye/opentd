@@ -3,11 +3,20 @@
 
 {% block page_title %}Sign up — {{ site_name }}{% endblock %}
 
+{% block extra_head %}
+  {% if turnstile_enabled and turnstile_site_key %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  {% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="max-w-md mx-auto px-4 py-12">
   <div class="card bg-base-100 border border-base-300 shadow-sm">
     <div class="card-body">
       <h1 class="card-title text-2xl">{% trans "Sign Up" %}</h1>
+      <p class="text-sm opacity-70 mb-1">
+        Closed beta — registrations are reviewed before email verification.
+      </p>
       <p class="text-sm opacity-70 mb-2">
         {% trans "Already have an account?" %}
         <a href="{% url 'account_login' %}" class="link link-primary">{% trans "Sign in" %}</a>
@@ -53,8 +62,12 @@
           {% endfor %}
         </label>
 
+        {% if turnstile_enabled and turnstile_site_key %}
+          <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
+        {% endif %}
+
         <div class="card-actions justify-end mt-2">
-          <button type="submit" class="btn btn-primary">{% trans "Sign Up" %}</button>
+          <button type="submit" class="btn btn-primary">{% trans "Request beta access" %}</button>
         </div>
       </form>
     </div>

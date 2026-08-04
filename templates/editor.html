@@ -742,7 +742,9 @@
   {% if owned_game %}data-game-save-url="{% url 'game_save' owned_game.pk %}" data-game-id="{{ owned_game.pk }}"{% endif %}
   data-is-guest="{% if is_guest %}1{% else %}0{% endif %}"
   data-is-auth="{% if user.is_authenticated %}1{% else %}0{% endif %}"
+  data-max-document-bytes="{{ max_document_bytes }}"
 >
+  <script type="application/json" id="editor-limits-json">{{ editor_limits_json|safe }}</script>
   {# ── Left palette ─────────────────────────────────────────── #}
   <aside class="editor-palette" aria-label="Editor palette">
     <div class="editor-palette__header p-3 border-b border-base-300 bg-base-100">
@@ -751,7 +753,7 @@
           id="game-title"
           type="text"
           class="input input-sm input-bordered flex-1 font-semibold"
-          maxlength="120"
+          maxlength="80"
           value="{{ game_document.title }}"
           aria-label="Game title"
         >
@@ -768,6 +770,9 @@
         {% endif %}
         <span id="save-status" class="text-xs opacity-60 whitespace-nowrap" aria-live="polite">Ready</span>
       </div>
+      <p id="limits-banner" class="text-[11px] opacity-70 mt-2 leading-snug m-0" aria-live="polite">
+        Limits: —
+      </p>
     </div>
 
     <div class="editor-palette__scroll p-2 space-y-2">
@@ -825,11 +830,11 @@
 
           <label class="form-control w-full">
             <span class="label-text text-xs">Grid width</span>
-            <input id="set-width" type="number" min="5" max="60" class="input input-sm input-bordered" value="{{ game_document.settings.width }}">
+            <input id="set-width" type="number" min="5" max="40" class="input input-sm input-bordered" value="{{ game_document.settings.width }}">
           </label>
           <label class="form-control w-full">
             <span class="label-text text-xs">Grid height</span>
-            <input id="set-height" type="number" min="5" max="40" class="input input-sm input-bordered" value="{{ game_document.settings.height }}">
+            <input id="set-height" type="number" min="5" max="30" class="input input-sm input-bordered" value="{{ game_document.settings.height }}">
           </label>
           <label class="label cursor-pointer justify-start gap-3 py-1">
             <input id="set-ground-build" type="checkbox" class="toggle toggle-sm toggle-primary"

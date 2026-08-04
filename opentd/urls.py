@@ -7,8 +7,17 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from core.auth_views import RequestAwarePasswordResetView, RequestAwareSignupView
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # Custom allauth views (inject request for rate limit + Turnstile)
+    path("accounts/signup/", RequestAwareSignupView.as_view(), name="account_signup"),
+    path(
+        "accounts/password/reset/",
+        RequestAwarePasswordResetView.as_view(),
+        name="account_reset_password",
+    ),
     path("accounts/", include("allauth.urls")),
     path("", include("core.urls")),
 ]

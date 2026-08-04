@@ -22,10 +22,17 @@ class GameSchemaTests(TestCase):
         doc = normalize_game_document(
             {"settings": {"width": 999, "height": 1}, "grid": []}
         )
-        self.assertEqual(doc["settings"]["width"], 60)
+        self.assertEqual(doc["settings"]["width"], 40)
         self.assertEqual(doc["settings"]["height"], 5)
         self.assertEqual(len(doc["grid"]), 5)
-        self.assertEqual(len(doc["grid"][0]), 60)
+        self.assertEqual(len(doc["grid"][0]), 40)
+
+    def test_guest_entity_caps(self):
+        from .limits import GUEST_LIMITS
+
+        towers = [{"name": f"T{i}", "id": f"t{i}"} for i in range(20)]
+        doc = normalize_game_document({"towers": towers}, limits=GUEST_LIMITS)
+        self.assertLessEqual(len(doc["towers"]), GUEST_LIMITS.max_towers)
 
     def test_default_has_entities(self):
         doc = default_game_document()

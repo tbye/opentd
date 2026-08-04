@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block page_title %}Beta signups — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+  <div class="flex items-center justify-between gap-3 mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold">Closed beta — pending registrations</h1>
+      <p class="text-sm opacity-60 mt-1">
+        Approve to send the verification email. Reject hides the row (marks not validated).
+      </p>
+    </div>
+    <a href="{% url 'admin:index' %}" class="btn btn-ghost btn-sm">Django admin</a>
+  </div>
+
+  {% if not applications %}
+    <div class="alert alert-info text-sm">No pending registrations.</div>
+  {% else %}
+    <div class="space-y-4">
+      {% for app in applications %}
+        <div class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body gap-3">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p class="font-semibold">{{ app.email }}</p>
+                <p class="text-xs opacity-60">
+                  User #{{ app.user_id }} · signed up {{ app.created_at|date:"Y-m-d H:i" }} UTC
+                  {% if app.closed_beta %} · closed beta{% endif %}
+                </p>
+              </div>
+              <span class="badge badge-warning badge-sm">{{ app.get_status_display }}</span>
+            </div>
+
+            <form method="post" action="{% url 'beta_moderation_action' app.pk %}" class="space-y-2">
+              {% csrf_token %}
+              <label class="form-control w-full">
+                <span class="label-text text-xs">Additional notes (moderation)</span>
+                <textarea
+                  name="notes"
+                  rows="2"
+                  class="textarea textarea-bordered textarea-sm w-full"
+                  placeholder="Why approve or reject…"
+                >{{ app.notes }}</textarea>
+              </label>
+              <div class="flex flex-wrap gap-2 justify-end">
+                <button type="submit" name="action" value="reject" class="btn btn-error btn-outline btn-sm"
+                        onclick="return confirm('Reject {{ app.email }}? They will be hidden from this list.');">
+                  Reject
+                </button>
+                <button type="submit" name="action" value="approve" class="btn btn-success btn-sm">
+                  Approve &amp; send verification
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock content %}

@@ -61,6 +61,25 @@ docker compose up -d --build
 
 Set `DJANGO_SECRET_KEY`, `RESEND_API_KEY`, `DJANGO_SUPERUSER_*`, etc. via the environment or a `.env` next to `docker-compose.yaml`.
 
+### Closed beta & security
+
+- Signups queue for **staff approval** at `/staff/beta-signups/` (approve sends the verification email; reject hides the row).
+- **Cloudflare Turnstile** on signup when `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` are set.
+- Guest vs registered **entity caps** are enforced server-side and shown in the editor.
+- Rate limits (IP + session) apply to draft saves, signup, password reset, and game save/create.
+- Stale guest drafts are purged on deploy (`cleanup_pending_games`, default 14 days).
+
+#### Cloudflare Turnstile setup
+
+1. Open [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Turnstile** → **Add site**.
+2. Widget name: e.g. `OpenTD signup`.
+3. Domains: `opentd.org`, `localhost` (and any staging host).
+4. Widget mode: **Managed** (recommended).
+5. Copy **Site Key** → `TURNSTILE_SITE_KEY` and **Secret Key** → `TURNSTILE_SECRET_KEY` into Coolify/env.
+6. Redeploy; signup will show the captcha widget.
+
+Without Turnstile keys, signup still works (closed beta queue remains the gate).
+
 ### Tailwind / DaisyUI (no Node)
 
 CSS is built with the [Tailwind standalone CLI](https://tailwindcss.com/blog/standalone-cli) and DaisyUI’s single-file plugins:

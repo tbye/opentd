@@ -8,6 +8,7 @@ from django.contrib.auth.models import AbstractBaseUser
 from django.http import HttpRequest
 
 from .game_schema import default_game_document, normalize_game_document
+from .limits import limits_for_request
 from .models import Game, PendingGame
 
 SESSION_DRAFT_ID = "opentd_pending_game_id"
@@ -56,13 +57,15 @@ def save_draft(
     *,
     lock_for_signup: bool = False,
 ) -> PendingGame:
-    """Create or update the pending game for this browser session."""
-    doc = normalize_game_document(definition)
+    """Create or update the pending game for this browser session (max 1)."""
+    limits = limits_for_request(request)
+    doc = normalize_game_document(definition, limits=limits)
     session_key = ensure_session(request)
     pending = get_pending_for_request(request)
 
     user = request.user if request.user.is_authenticated else None
     if pending is None:
+        # One pending draft per session / user.
         pending = PendingGame(
             session_key=session_key,
             user=user if user and user.is_authenticated else None,
@@ -105,14 +108,21 @@ def promote_pending_to_game(user: AbstractBaseUser) -> Game | None:
     After email verification: copy the user's pending draft into a real Game.
 
     Returns the created Game, or None if there was nothing to promote.
+    Enforces one owned game per account.
     """
+    if Game.objects.filter(owner=user).exists():
+        PendingGame.objects.filter(user=user).delete()
+        return Game.objects.filter(owner=user).order_by("-updated_at").first()
+
     pending = (
         PendingGame.objects.filter(user=user).order_by("-updated_at").first()
     )
     if pending is None:
         return None
 
-    definition = normalize_game_document(pending.definition)
+    from .limits import REGISTERED_LIMITS
+
+    definition = normalize_game_document(pending.definition, limits=REGISTERED_LIMITS)
     game = Game.objects.create(
         owner=user,  # type: ignore[misc]
         title=definition.get("title") or pending.title or "Untitled game",
@@ -125,15 +135,16 @@ def promote_pending_to_game(user: AbstractBaseUser) -> Game | None:
 
 def load_editor_document(request: HttpRequest, game_id: int | None = None) -> dict[str, Any]:
     """Document to hydrate the editor (owned game or pending draft or blank)."""
+    limits = limits_for_request(request)
     if game_id is not None and request.user.is_authenticated:
         try:
             game = Game.objects.get(pk=game_id, owner=request.user)
-            return normalize_game_document(game.definition)
+            return normalize_game_document(game.definition, limits=limits)
         except Game.DoesNotExist:
             pass
 
     pending = get_pending_for_request(request)
     if pending is not None:
-        return normalize_game_document(pending.definition)
+        return normalize_game_document(pending.definition, limits=limits)
 
     return default_game_document()

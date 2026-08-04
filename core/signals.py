@@ -16,6 +16,17 @@ logger = logging.getLogger(__name__)
 @receiver(user_signed_up)
 def on_user_signed_up(request, user, **kwargs):
     """Keep the guest's map work tied to the new account until email verify."""
+    from .models import SignupApplication
+
+    # Ensure closed-beta application exists even if adapter path skipped.
+    SignupApplication.objects.get_or_create(
+        user=user,
+        defaults={
+            "email": user.email or "",
+            "status": SignupApplication.Status.PENDING,
+            "closed_beta": True,
+        },
+    )
     pending = attach_pending_to_user(request, user)
     if pending is not None:
         logger.info(

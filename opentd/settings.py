@@ -94,6 +94,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "core.middleware.RequestBodySizeMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -102,6 +103,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "core.middleware.ContentSecurityPolicyMiddleware",
 ]
 
 ROOT_URLCONF = "opentd.urls"
@@ -250,3 +252,83 @@ if RESEND_API_KEY:
     }
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+
+# ---------------------------------------------------------------------------
+# django-allauth — closed beta adapter + forms
+# ---------------------------------------------------------------------------
+ACCOUNT_ADAPTER = "core.adapters.AccountAdapter"
+ACCOUNT_FORMS = {
+    "signup": "core.forms.ClosedBetaSignupForm",
+    "reset_password": "core.forms.RateLimitedResetPasswordForm",
+}
+
+
+# ---------------------------------------------------------------------------
+# Cloudflare Turnstile (signup captcha)
+# Create a widget at https://dash.cloudflare.com/ → Turnstile → Add site
+# Widget domains: opentd.org, localhost
+# Copy Site Key + Secret Key into env.
+# ---------------------------------------------------------------------------
+TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "").strip()
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "").strip()
+
+
+# ---------------------------------------------------------------------------
+# Request / document size guards
+# ---------------------------------------------------------------------------
+MAX_REQUEST_BODY_BYTES = int(os.environ.get("MAX_REQUEST_BODY_BYTES", str(262_144)))
+MAX_DOCUMENT_BYTES = int(os.environ.get("MAX_DOCUMENT_BYTES", str(200_000)))
+
+
+# ---------------------------------------------------------------------------
+# Content-Security-Policy (see core.middleware.ContentSecurityPolicyMiddleware)
+# ---------------------------------------------------------------------------
+CSP_ENABLED = os.environ.get("CSP_ENABLED", "True").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+
+
+# ---------------------------------------------------------------------------
+# Production security (active when DEBUG is False)
+# ---------------------------------------------------------------------------
+if not DEBUG:
+    SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "True").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_HTTPONLY = False  # JS needs CSRF for fetch in editor
+    SESSION_COOKIE_SAMESITE = "Lax"
+    CSRF_COOKIE_SAMESITE = "Lax"
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = os.environ.get("SECURE_HSTS_PRELOAD", "False").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
+    X_FRAME_OPTIONS = "DENY"
+    # Do not leak session id over non-HTTPS referrers
+    SESSION_COOKIE_NAME = "opentd_sessionid"
+    CSRF_COOKIE_NAME = "opentd_csrftoken"
+else:
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    CSRF_COOKIE_SAMESITE = "Lax"
+    X_FRAME_OPTIONS = "DENY"
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+
+
+# Pending draft retention (days) — used by cleanup_pending_games
+PENDING_GAME_RETENTION_DAYS = int(os.environ.get("PENDING_GAME_RETENTION_DAYS", "14"))

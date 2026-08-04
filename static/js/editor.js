@@ -79,8 +79,26 @@
   const gameSaveUrl = root.dataset.gameSaveUrl || "";
   const isGuest = root.dataset.isGuest === "1";
   const isAuth = root.dataset.isAuth === "1";
+  const maxDocumentBytes = parseInt(root.dataset.maxDocumentBytes || "200000", 10) || 200000;
 
-  const ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
+  /** @type {{ max_games: number, max_towers: number, max_monsters: number, max_wave_types: number, tier: string }} */
+  let limits = {
+    max_games: 1,
+    max_towers: 5,
+    max_monsters: 5,
+    max_wave_types: 3,
+    tier: "guest",
+  };
+  try {
+    const limEl = document.getElementById("editor-limits-json");
+    if (limEl && limEl.textContent) {
+      limits = Object.assign(limits, JSON.parse(limEl.textContent));
+    }
+  } catch (_) {
+    /* keep defaults */
+  }
+
+  const ID_RE = /^[A-Za-z0-9_-]{1,24}$/;
 
   // Default paint tool: Spawn (critical for a complete game).
   let tool = "spawn";
@@ -318,8 +336,8 @@
   }
 
   function resizeGrid(newW, newH) {
-    newW = Math.max(5, Math.min(60, newW | 0));
-    newH = Math.max(5, Math.min(40, newH | 0));
+    newW = Math.max(5, Math.min(40, newW | 0));
+    newH = Math.max(5, Math.min(30, newH | 0));
     const old = doc.grid || [];
     const next = [];
     for (let y = 0; y < newH; y++) {
@@ -1935,8 +1953,14 @@
     if (!Number.isFinite(w) || !Number.isFinite(h)) return;
     resizeGrid(w, h);
   }
-  els.width.addEventListener("change", onDimChange);
-  els.height.addEventListener("change", onDimChange);
+  els.width.addEventListener("change", () => {
+    onDimChange();
+    updateLimitsBanner();
+  });
+  els.height.addEventListener("change", () => {
+    onDimChange();
+    updateLimitsBanner();
+  });
 
   els.spawnExitAny?.addEventListener("change", () => {
     if (els.spawnExitId) els.spawnExitId.disabled = true;
@@ -1964,7 +1988,38 @@
     }
   );
 
+  function updateLimitsBanner() {
+    const el = document.getElementById("limits-banner");
+    if (!el) return;
+    const tw = (doc.towers || []).length;
+    const mo = (doc.monsters || []).length;
+    const wv = (doc.wave_types || []).length;
+    const tier =
+      limits.tier === "registered" ? "registered" : "guest";
+    el.textContent =
+      "Limits (" +
+      tier +
+      "): towers " +
+      tw +
+      "/" +
+      limits.max_towers +
+      " · monsters " +
+      mo +
+      "/" +
+      limits.max_monsters +
+      " · waves " +
+      wv +
+      "/" +
+      limits.max_wave_types +
+      " · games " +
+      limits.max_games;
+  }
+
   document.getElementById("btn-add-tower")?.addEventListener("click", () => {
+    if ((doc.towers || []).length >= limits.max_towers) {
+      setStatus("Tower type limit reached (" + limits.max_towers + ").");
+      return;
+    }
     const t = ensureTowerShape({
       id: uid("twr"),
       name: "New tower",
@@ -1985,10 +2040,15 @@
     selectedPortal = null;
     renderTowers();
     renderMonsters();
+    updateLimitsBanner();
     markDirty();
   });
 
   document.getElementById("btn-add-monster")?.addEventListener("click", () => {
+    if ((doc.monsters || []).length >= limits.max_monsters) {
+      setStatus("Monster type limit reached (" + limits.max_monsters + ").");
+      return;
+    }
     const m = {
       id: uid("mob"),
       name: "New monster",
@@ -2004,16 +2064,22 @@
     renderMonsters();
     renderTowers();
     renderWaveTypes();
+    updateLimitsBanner();
     markDirty();
   });
 
   document.getElementById("btn-add-wave-type")?.addEventListener("click", () => {
     ensureWaveTypes();
+    if ((doc.wave_types || []).length >= limits.max_wave_types) {
+      setStatus("Wave type limit reached (" + limits.max_wave_types + ").");
+      return;
+    }
     const wt = defaultWaveType();
     wt.name = "Wave type " + (doc.wave_types.length + 1);
     doc.wave_types.push(wt);
     selectedWaveTypeId = wt.id;
     renderWaveTypes();
+    updateLimitsBanner();
     markDirty();
   });
 
@@ -2125,6 +2191,7 @@
   renderTowers();
   renderMonsters();
   renderWaveTypes();
+  updateLimitsBanner();
   updateGameTypeUi();
   if (isGuest) {
     setTimeout(() => autosaveDraft(), 400);

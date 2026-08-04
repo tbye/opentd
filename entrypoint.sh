@@ -22,5 +22,13 @@ fi
 echo " === Collecting static files... === "
 uv run --no-sync python manage.py collectstatic --noinput --clear
 
+echo " === Cleaning stale pending drafts (14d) === "
+uv run --no-sync python manage.py cleanup_pending_games --days "${PENDING_GAME_RETENTION_DAYS:-14}" || true
+
+if [ "${DEBUG:-False}" = "False" ] || [ "${DEBUG:-false}" = "false" ] || [ "${DEBUG:-0}" = "0" ]; then
+  echo " === Django deploy checks === "
+  uv run --no-sync python manage.py check --deploy || true
+fi
+
 echo " === Starting Gunicorn... === "
 exec "$@"
