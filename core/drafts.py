@@ -108,9 +108,22 @@ def promote_pending_to_game(user: AbstractBaseUser) -> Game | None:
     After email verification: copy the user's pending draft into a real Game.
 
     Returns the created Game, or None if there was nothing to promote.
-    Enforces one owned game per account.
+    Respects the user's max_games preference (default 5).
     """
-    if Game.objects.filter(owner=user).exists():
+    from .limits import (
+        REGISTERED_LIMITS,
+        TierLimits,
+        get_or_create_profile,
+        max_games_for_user,
+    )
+
+    # Ensure profile exists as soon as they become a real account.
+    get_or_create_profile(user)
+
+    max_games = max_games_for_user(user)
+    owned_count = Game.objects.filter(owner=user).count()
+    if owned_count >= max_games:
+        # Already at cap — drop pending draft rather than exceeding limit.
         PendingGame.objects.filter(user=user).delete()
         return Game.objects.filter(owner=user).order_by("-updated_at").first()
 
@@ -120,9 +133,14 @@ def promote_pending_to_game(user: AbstractBaseUser) -> Game | None:
     if pending is None:
         return None
 
-    from .limits import REGISTERED_LIMITS
-
-    definition = normalize_game_document(pending.definition, limits=REGISTERED_LIMITS)
+    caps = TierLimits(
+        max_games=max_games,
+        max_towers=REGISTERED_LIMITS.max_towers,
+        max_monsters=REGISTERED_LIMITS.max_monsters,
+        max_wave_types=REGISTERED_LIMITS.max_wave_types,
+        tier="registered",
+    )
+    definition = normalize_game_document(pending.definition, limits=caps)
     game = Game.objects.create(
         owner=user,  # type: ignore[misc]
         title=definition.get("title") or pending.title or "Untitled game",

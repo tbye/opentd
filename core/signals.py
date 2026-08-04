@@ -16,7 +16,11 @@ logger = logging.getLogger(__name__)
 @receiver(user_signed_up)
 def on_user_signed_up(request, user, **kwargs):
     """Keep the guest's map work tied to the new account until email verify."""
+    from .limits import get_or_create_profile
     from .models import SignupApplication
+
+    # Per-user preferences (max_games, etc.)
+    get_or_create_profile(user)
 
     # Ensure closed-beta application exists even if adapter path skipped.
     SignupApplication.objects.get_or_create(

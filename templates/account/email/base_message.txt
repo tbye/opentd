@@ -1,0 +1,7 @@
+{% load i18n %}{% autoescape off %}Hello from OpenTD.org!
+
+{% block content %}{% endblock content %}
+
+Thank you for using OpenTD.org!
+https://opentd.org
+{% endautoescape %}

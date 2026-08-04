@@ -19,6 +19,7 @@ urlpatterns = [
         name="account_reset_password",
     ),
     path("accounts/", include("allauth.urls")),
+    path("docs/", include("opentd_docs.urls")),
     path("", include("core.urls")),
 ]
 

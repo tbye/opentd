@@ -1,13 +1,15 @@
 """
-IP + session rate limiting (database-backed for multi-worker safety).
+Rate limiting (database-backed for multi-worker safety).
 
-Windows are fixed-period counters keyed by (bucket, identity).
+Authenticated requests are limited **per user**.
+Anonymous requests (signup, guest draft, password reset) use session + IP.
 """
 
 from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import timedelta
 
 from django.db import transaction
 from django.http import HttpRequest
@@ -56,6 +58,22 @@ def session_id(request: HttpRequest) -> str:
     return key[:64] or "nosession"
 
 
+def identities_for_request(request: HttpRequest) -> list[str]:
+    """
+    Rate-limit identity keys for this request.
+
+    - Logged-in: only the user id (true per-user limits).
+    - Guest / pre-auth: session + IP (no account yet).
+    """
+    user = getattr(request, "user", None)
+    if user is not None and getattr(user, "is_authenticated", False):
+        return [f"user:{user.pk}"]
+    return [
+        f"ip:{client_ip(request)}",
+        f"sess:{session_id(request)}",
+    ]
+
+
 def _bucket_key(spec: RateSpec, identity: str) -> str:
     raw = f"{spec.name}:{identity}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:48]
@@ -63,23 +81,19 @@ def _bucket_key(spec: RateSpec, identity: str) -> str:
 
 def check_and_hit(request: HttpRequest, spec: RateSpec) -> tuple[bool, int]:
     """
-    Record one hit against both IP and session buckets.
-    Returns (allowed, retry_after_seconds). Fails closed only on true over-limit.
+    Record one hit against each identity bucket for this request.
+    Returns (allowed, retry_after_seconds).
     """
     from .models import RateLimitBucket
 
     now = timezone.now()
-    identities = [
-        f"ip:{client_ip(request)}",
-        f"sess:{session_id(request)}",
-    ]
+    identities = identities_for_request(request)
     retry_after = 0
     for identity in identities:
         key = _bucket_key(spec, identity)
         with transaction.atomic():
             bucket, _created = (
-                RateLimitBucket.objects.select_for_update()
-                .get_or_create(
+                RateLimitBucket.objects.select_for_update().get_or_create(
                     key=key,
                     defaults={
                         "count": 0,
@@ -96,7 +110,11 @@ def check_and_hit(request: HttpRequest, spec: RateSpec) -> tuple[bool, int]:
 
             if bucket.count >= spec.limit:
                 remaining = max(
-                    1, int(spec.period_seconds - (now - bucket.window_start).total_seconds())
+                    1,
+                    int(
+                        spec.period_seconds
+                        - (now - bucket.window_start).total_seconds()
+                    ),
                 )
                 retry_after = max(retry_after, remaining)
                 return False, retry_after
@@ -124,8 +142,6 @@ def rate_limit_response(retry_after: int):
 
 def purge_old_buckets(*, older_than_seconds: int = 86400) -> int:
     """Delete rate-limit rows older than one day (or custom)."""
-    from datetime import timedelta
-
     from .models import RateLimitBucket
 
     cutoff = timezone.now() - timedelta(seconds=older_than_seconds)

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block page_title %}{% block docs_title %}Docs{% endblock %} — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-8">
+  <nav class="text-sm mb-6 flex flex-wrap gap-2 opacity-80">
+    <a href="{% url 'docs:index' %}" class="link link-hover">Docs</a>
+    <span>/</span>
+    <a href="{% url 'docs:editor' %}" class="link link-hover">Editor guide</a>
+    <span>/</span>
+    <a href="{% url 'docs:json' %}" class="link link-hover">JSON format</a>
+  </nav>
+  <article class="prose max-w-none space-y-4">
+    {% block docs_body %}{% endblock %}
+  </article>
+</div>
+{% endblock %}

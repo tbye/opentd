@@ -4,6 +4,15 @@ from . import views
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("dashboard/", views.dashboard, name="dashboard"),
+    path("gallery/", views.gallery, name="gallery"),
+    path("play/<str:share_code>/", views.play_game, name="play_game"),
+    path(
+        "play/<str:share_code>/export.json",
+        views.export_game_json,
+        name="export_game",
+    ),
+    path("dashboard/import/", views.import_game, name="import_game"),
     path("editor/", views.editor, name="editor"),
     path("api/draft/", views.draft_api, name="draft_api"),
     path("api/stash-signup/", views.stash_and_signup, name="stash_and_signup"),

@@ -1,0 +1,46 @@
+{% extends "opentd_docs/base_docs.html" %}
+
+{% block docs_title %}Editor guide{% endblock %}
+
+{% block docs_body %}
+<h1 class="text-3xl font-bold">Editing a game</h1>
+<p class="opacity-80">The editor is guest-friendly: paint a map first, sign up when you want to keep it.</p>
+
+<h2 class="text-xl font-semibold mt-8">Map cells</h2>
+<ul class="list-disc list-inside space-y-1 opacity-90">
+  <li><strong>Spawn</strong> — monsters enter here (need at least one).</li>
+  <li><strong>Exit</strong> — monsters leave here (need at least one for most modes).</li>
+  <li><strong>Path</strong> — used by Monster March as the painted lane.</li>
+  <li><strong>Tower pad</strong> — preferred build sites for towers.</li>
+  <li><strong>Ground</strong> — open terrain (buildable if “allow ground build” is on).</li>
+  <li><strong>Wall</strong> — blocked cell for mazes (Monster Rush).</li>
+</ul>
+<p class="text-sm opacity-70">Tip: click a cell with the same palette tool selected to clear it back to ground.</p>
+
+<h2 class="text-xl font-semibold mt-8">Game types</h2>
+<ul class="list-disc list-inside space-y-1 opacity-90">
+  {% for key, label in game_types.items %}
+    <li><strong>{{ label }}</strong> (<code>{{ key }}</code>)</li>
+  {% endfor %}
+</ul>
+<p class="opacity-80">
+  <strong>Monster March</strong> follows painted paths.
+  <strong>Monster Rush</strong> pathfinds; when blocked, monsters attack the nearest wall/tower on the dig route (Chaos mode keeps smashing the shortest line).
+  <strong>Defend the Castle</strong> focuses on a central objective.
+</p>
+
+<h2 class="text-xl font-semibold mt-8">Towers, monsters, waves</h2>
+<ul class="list-disc list-inside space-y-1 opacity-90">
+  <li><strong>Towers</strong> — cost, health, damage, range, cooldown, weapons, elements, and flat upgrades.</li>
+  <li><strong>Monsters</strong> — HP, speed, score reward.</li>
+  <li><strong>Wave types</strong> — which rounds run, monster groups, and scaling by appearance or round.</li>
+</ul>
+<p class="opacity-80">Guests have lower type caps; registered accounts get higher caps. Limits show in the editor header.</p>
+
+<h2 class="text-xl font-semibold mt-8">Publishing</h2>
+<ul class="list-disc list-inside space-y-1 opacity-90">
+  <li><strong>Public</strong> — shareable play link + gallery eligibility.</li>
+  <li><strong>Allow download</strong> — others can download the OpenTD JSON export.</li>
+  <li>Use <strong>Dashboard</strong> to manage games, import JSON, and copy play links.</li>
+</ul>
+{% endblock %}

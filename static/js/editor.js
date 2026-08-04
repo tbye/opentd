@@ -1812,15 +1812,33 @@
     }
   }
 
+  function publishingFlags() {
+    const pub = document.getElementById("set-is-public");
+    const dl = document.getElementById("set-allow-download");
+    return {
+      is_public: !!(pub && pub.checked),
+      allow_download: !!(dl && dl.checked),
+    };
+  }
+
   async function saveOwnedOrNew() {
     syncDocFromForm();
     setStatus("Saving…");
     try {
+      const flags = publishingFlags();
       if (gameSaveUrl) {
-        await postJson(gameSaveUrl, { definition: doc });
+        await postJson(gameSaveUrl, {
+          definition: doc,
+          is_public: flags.is_public,
+          allow_download: flags.allow_download,
+        });
         setStatus("Game saved", "ok");
       } else if (isAuth && gameCreateUrl) {
-        const data = await postJson(gameCreateUrl, { definition: doc });
+        const data = await postJson(gameCreateUrl, {
+          definition: doc,
+          is_public: flags.is_public,
+          allow_download: flags.allow_download,
+        });
         setStatus("Saved", "ok");
         if (data.game_id) {
           window.location.href = "/editor/?game=" + data.game_id;

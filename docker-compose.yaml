@@ -10,7 +10,7 @@ services:
       # Persisted on the host at /data/django-apps/opentd/db.sqlite3
       SQLITE_PATH: /data/django-apps/opentd/db.sqlite3
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://opentd.org}
-      SITE_NAME: ${SITE_NAME:-OpenTD}
+      SITE_NAME: ${SITE_NAME:-OpenTD.org}
       SITE_DOMAIN: ${SITE_DOMAIN:-opentd.org}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       # Must be a real address on your Resend-verified domain in production.

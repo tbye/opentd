@@ -1,0 +1,53 @@
+{% extends "opentd_docs/base_docs.html" %}
+{% load static %}
+
+{% block docs_title %}JSON format{% endblock %}
+
+{% block docs_body %}
+<h1 class="text-3xl font-bold">OpenTD game JSON</h1>
+<p class="opacity-80">
+  Export/import uses the portable format <code>{{ format_id }}</code>
+  (version <strong>{{ format_version }}</strong>). Definition schema version:
+  <strong>{{ schema_version }}</strong>.
+</p>
+
+<h2 class="text-xl font-semibold mt-8">Wrapper</h2>
+<pre class="bg-base-200 p-4 rounded-lg text-xs overflow-x-auto"><code>{
+  "format": "{{ format_id }}",
+  "format_version": {{ format_version }},
+  "title": "My maze",
+  "exported_at": "2026-08-04T12:00:00Z",
+  "definition": { /* editor document */ }
+}</code></pre>
+<p class="text-sm opacity-70">
+  You may also import a bare <code>definition</code> object (the same JSON the editor stores).
+  Imports are normalized and clamped to your account limits.
+</p>
+
+<h2 class="text-xl font-semibold mt-8">Definition object</h2>
+<ul class="list-disc list-inside space-y-1 opacity-90 text-sm">
+  <li><code>title</code> — game name (plain text)</li>
+  <li><code>settings</code> — width, height, game_type, chaos_mode, lives, gold, delays, allow_ground_build</li>
+  <li><code>grid</code> — 2D array of cell kinds: ground, path, tower, blocked, spawn, exit</li>
+  <li><code>spawns</code> / <code>exits</code> — portal metadata (ids, positions, exit targeting)</li>
+  <li><code>towers</code> — tower types (including upgrade linkages)</li>
+  <li><code>monsters</code> — monster types</li>
+  <li><code>wave_types</code> — round schedules, groups, scaling rules</li>
+  <li><code>scoreboard</code> — ordered widget ids</li>
+</ul>
+
+<h2 class="text-xl font-semibold mt-8">Game types</h2>
+<ul class="list-disc list-inside space-y-1 opacity-90">
+  {% for key, label in game_types.items %}
+    <li><code>{{ key }}</code> — {{ label }}</li>
+  {% endfor %}
+</ul>
+
+<h2 class="text-xl font-semibold mt-8">Sample definition (truncated)</h2>
+<pre class="bg-base-200 p-4 rounded-lg text-xs overflow-x-auto max-h-96 overflow-y-auto"><code>{{ sample_json }}</code></pre>
+
+<p class="mt-6">
+  <a href="{% url 'dashboard' %}" class="btn btn-primary btn-sm">Import a file in your dashboard</a>
+  <a href="{% url 'docs:editor' %}" class="btn btn-ghost btn-sm">Editor guide</a>
+</p>
+{% endblock %}

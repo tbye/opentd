@@ -1,0 +1,215 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="{% static 'css/output.css' %}" rel="stylesheet">
+  <title>{{ game.title }} — OpenTD</title>
+  <style>
+    body { font-family: Inter, system-ui, sans-serif; }
+    .play-shell { min-height: 100vh; display: flex; flex-direction: column; background: #0f172a; color: #e2e8f0; }
+    .play-header {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 0.5rem 1rem; padding: 0.55rem 1rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: #1e293b;
+    }
+    .play-header__brand { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; }
+    .play-header__title { font-weight: 700; font-size: 1rem; }
+    .play-header__credit { font-size: 0.8rem; opacity: 0.75; }
+    .play-main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .play-stage { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
+    .play-canvas {
+      flex: 1; min-height: 0; overflow: auto; display: flex; align-items: flex-start; justify-content: center;
+      padding: 0.75rem;
+    }
+    .map-frame { position: relative; display: inline-block; line-height: 0; }
+    .editor-grid {
+      display: grid; gap: 1px; background: rgba(255,255,255,0.12);
+      border: 2px solid rgba(255,255,255,0.2);
+    }
+    .editor-cell {
+      width: var(--cell, 28px); height: var(--cell, 28px);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; color: #fff; text-shadow: 0 1px 1px rgb(0 0 0 / 0.45);
+    }
+    .editor-cell[data-kind="ground"]  { background: #7cb342; }
+    .editor-cell[data-kind="path"]    { background: #bcaaa4; }
+    .editor-cell[data-kind="tower"]   { background: #42a5f5; }
+    .editor-cell[data-kind="blocked"] { background: #546e7a; }
+    .editor-cell[data-kind="spawn"]   { background: #ff9800; }
+    .editor-cell[data-kind="exit"]    { background: #e53935; }
+    .playtest-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+    .play-shell.is-playtesting .playtest-overlay { pointer-events: auto; cursor: crosshair; }
+    .playtest-mob {
+      position: absolute; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #f48fb1, #c2185b);
+      border: 1.5px solid #880e4f; transform: translate(-50%, -50%);
+      z-index: 5; pointer-events: none; box-sizing: border-box;
+    }
+    .playtest-mob__hp {
+      position: absolute; left: 50%; top: -5px; transform: translateX(-50%);
+      width: 160%; height: 2px; background: #333; border-radius: 1px; overflow: hidden;
+    }
+    .playtest-mob__hp > i { display: block; height: 100%; background: #69f0ae; }
+    .playtest-tower {
+      position: absolute; margin: 0; border-radius: 2px; background: #1565c0;
+      border: 2px solid #0d47a1; transform: none; z-index: 3; pointer-events: none; box-sizing: border-box;
+    }
+    .playtest-tower.is-damaged { background: #1e4b8c; border-color: #b71c1c; }
+    .playtest-tower__hp {
+      position: absolute; left: 10%; right: 10%; top: 3px; height: 3px;
+      background: #333; border-radius: 1px; overflow: hidden;
+    }
+    .playtest-tower__hp > i { display: block; height: 100%; background: #81c784; }
+    .playtest-shot {
+      position: absolute; border-radius: 50%; background: #ffeb3b;
+      transform: translate(-50%, -50%); z-index: 6; pointer-events: none;
+    }
+    .playtest-bar {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+      gap: 0.4rem 0.65rem; padding: 0.5rem 0.75rem;
+      border-top: 1px solid rgba(255,255,255,0.08); background: #1e293b; color: #e2e8f0;
+    }
+    .playtest-bar .btn { min-height: 2rem; height: 2rem; }
+    .playtest-bar__stat { font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+    .playtest-bar__msg { font-size: 0.75rem; opacity: 0.85; max-width: 28rem; text-align: center; }
+    .playtest-bar__msg.is-error { color: #fca5a5; }
+    .playtest-bar__msg.is-ok { color: #86efac; }
+    .playtest-place-menu {
+      position: fixed; z-index: 90; min-width: 11rem; max-width: min(16rem, calc(100vw - 1rem));
+      padding: 0.35rem; border-radius: 0.5rem; border: 1px solid rgba(0,0,0,0.12);
+      background: #fff; color: #1f2937; box-shadow: 0 12px 28px -6px rgba(0,0,0,0.2);
+    }
+    .playtest-place-menu[hidden] { display: none !important; }
+    .playtest-place-menu__title { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; opacity: 0.55; padding: 0.25rem 0.45rem; }
+    .playtest-place-menu__item {
+      display: flex; justify-content: space-between; gap: 0.75rem; width: 100%;
+      text-align: left; padding: 0.4rem 0.5rem; border: none; border-radius: 0.35rem;
+      background: transparent; cursor: pointer; font-size: 0.8rem;
+    }
+    .playtest-place-menu__item:hover:not(:disabled) { background: #f3f4f6; }
+    .playtest-place-menu__cancel {
+      width: 100%; margin-top: 0.2rem; padding: 0.35rem 0.5rem; border: none;
+      border-radius: 0.35rem; background: #f3f4f6; font-size: 0.75rem; cursor: pointer;
+    }
+    .game-info-bar {
+      display: flex; flex-wrap: wrap; gap: 0.5rem 0.85rem; justify-content: center;
+      padding: 0.4rem 0.75rem; font-size: 0.8rem; background: #0f172a; border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .game-info-bar__stat strong { margin-left: 0.25rem; }
+    .play-footer {
+      text-align: center; padding: 0.85rem 1rem 1.1rem;
+      border-top: 1px solid rgba(255,255,255,0.08); background: #0f172a;
+      font-size: 0.85rem; opacity: 0.9;
+    }
+    .play-footer a { color: #93c5fd; font-weight: 600; text-decoration: underline; }
+  </style>
+</head>
+<body class="play-shell" id="play-app">
+  <header class="play-header">
+    <div>
+      <div class="play-header__brand">OpenTD game</div>
+      <div class="play-header__title">{{ game.title }}</div>
+      <div class="play-header__credit">by {{ game.author_credit }} · {{ game.game_type_label }}</div>
+    </div>
+    <div class="flex flex-wrap gap-2 items-center">
+      {% if can_download %}
+        <a href="{% url 'export_game' game.share_code %}" class="btn btn-xs btn-outline border-slate-500 text-slate-200">Download JSON</a>
+      {% endif %}
+      {% if is_owner %}
+        <a href="{% url 'editor' %}?game={{ game.pk }}" class="btn btn-xs btn-ghost text-slate-200">Edit</a>
+      {% endif %}
+      <a href="{% url 'home' %}" class="btn btn-xs btn-primary">OpenTD.org</a>
+    </div>
+  </header>
+
+  <main class="play-main">
+    <div class="play-stage editor-stage is-playtesting" id="play-stage">
+      <div class="game-info-bar" id="game-info-bar" aria-label="Scoreboard"></div>
+      <div class="play-canvas">
+        <div class="map-frame" id="map-frame">
+          <div id="editor-grid" class="editor-grid" role="grid" aria-label="Playfield"></div>
+          <div id="playtest-overlay" class="playtest-overlay" aria-hidden="false"></div>
+        </div>
+      </div>
+      <div id="playtest-place-menu" class="playtest-place-menu" hidden role="menu"></div>
+      <div class="playtest-bar" id="playtest-bar" role="toolbar" aria-label="Play controls">
+        <span class="playtest-bar__label opacity-60 text-xs font-bold uppercase tracking-wide">Play</span>
+        <button type="button" id="pt-play" class="btn btn-sm btn-success" data-play-label="Play">Play</button>
+        <button type="button" id="pt-pause" class="btn btn-sm btn-warning" disabled>Pause</button>
+        <button type="button" id="pt-stop" class="btn btn-sm btn-error btn-outline" disabled>Stop</button>
+        <button type="button" id="pt-wave" class="btn btn-sm btn-info btn-outline" disabled>Wave</button>
+        <div class="join" role="group" aria-label="Speed">
+          <button type="button" class="btn btn-sm btn-ghost join-item playtest-speed is-active" data-speed="1">1×</button>
+          <button type="button" class="btn btn-sm btn-ghost join-item playtest-speed" data-speed="2">2×</button>
+          <button type="button" class="btn btn-sm btn-ghost join-item playtest-speed" data-speed="4">4×</button>
+        </div>
+        <span class="playtest-bar__stat">❤ <strong id="pt-lives">—</strong></span>
+        <span class="playtest-bar__stat">🪙 <strong id="pt-gold">—</strong></span>
+        <span class="playtest-bar__stat">Wave <strong id="pt-wave-num">0</strong></span>
+        <span class="playtest-bar__stat">Mobs <strong id="pt-mobs">0</strong></span>
+        <span class="playtest-bar__msg" id="pt-msg">Press Play to start.</span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="play-footer">
+    Built with <a href="{% url 'home' %}">OpenTD.org</a> —
+    design your own tower defense games in the browser, free.
+  </footer>
+
+  <script type="application/json" id="initial-game-document">{{ game_document_json|safe }}</script>
+  <script src="{% static 'js/playtest.js' %}"></script>
+  <script>
+  (function () {
+    var doc;
+    try {
+      doc = JSON.parse(document.getElementById("initial-game-document").textContent);
+    } catch (e) {
+      doc = null;
+    }
+    if (!doc || !doc.grid) return;
+
+    var gridEl = document.getElementById("editor-grid");
+    var w = (doc.settings && doc.settings.width) || (doc.grid[0] && doc.grid[0].length) || 10;
+    var h = (doc.settings && doc.settings.height) || doc.grid.length || 10;
+    var cell = Math.max(16, Math.min(36, Math.floor(Math.min(720 / w, 480 / h))));
+    gridEl.style.setProperty("--cell", cell + "px");
+    gridEl.style.gridTemplateColumns = "repeat(" + w + ", var(--cell))";
+    gridEl.innerHTML = "";
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var kind = (doc.grid[y] && doc.grid[y][x]) || "ground";
+        var cellDiv = document.createElement("div");
+        cellDiv.className = "editor-cell";
+        cellDiv.dataset.kind = kind;
+        cellDiv.dataset.x = String(x);
+        cellDiv.dataset.y = String(y);
+        if (kind === "spawn" || kind === "exit") {
+          var list = kind === "spawn" ? doc.spawns : doc.exits;
+          var portal = (list || []).find(function (p) { return p.x === x && p.y === y; });
+          cellDiv.textContent = portal ? portal.id : (kind === "spawn" ? "S" : "E");
+        }
+        gridEl.appendChild(cellDiv);
+      }
+    }
+
+    document.getElementById("play-stage").classList.add("is-playtesting");
+    if (window.OpenTDPlaytest) {
+      window.OpenTDPlaytest.init({
+        getDocument: function () { return doc; },
+        onModeChange: function (active) {
+          document.body.classList.toggle("is-playtesting", !!active);
+          document.getElementById("play-stage").classList.toggle("is-playtesting", !!active);
+        },
+      });
+    }
+  })();
+  </script>
+</body>
+</html>

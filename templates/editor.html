@@ -743,6 +743,9 @@
   data-is-guest="{% if is_guest %}1{% else %}0{% endif %}"
   data-is-auth="{% if user.is_authenticated %}1{% else %}0{% endif %}"
   data-max-document-bytes="{{ max_document_bytes }}"
+  data-game-public="{% if game_is_public %}1{% else %}0{% endif %}"
+  data-game-download="{% if game_allow_download %}1{% else %}0{% endif %}"
+  data-share-code="{{ game_share_code }}"
 >
   <script type="application/json" id="editor-limits-json">{{ editor_limits_json|safe }}</script>
   {# ── Left palette ─────────────────────────────────────────── #}
@@ -852,6 +855,33 @@
             <span class="label-text text-xs">Starting gold</span>
             <input id="set-gold" type="number" min="0" max="1000000" class="input input-sm input-bordered" value="{{ game_document.settings.starting_gold }}">
           </label>
+          {% if owned_game %}
+          <div class="rounded-md border border-base-300 p-2 space-y-2 bg-base-100">
+            <p class="text-[10px] font-semibold uppercase tracking-wide opacity-60 m-0">Publishing</p>
+            <label class="label cursor-pointer justify-start gap-3 py-0">
+              <input id="set-is-public" type="checkbox" class="toggle toggle-sm toggle-primary"
+                     {% if game_is_public %}checked{% endif %}>
+              <span class="label-text text-sm leading-snug">
+                Public play link
+                <span class="block text-[11px] opacity-50">Gallery + shareable URL</span>
+              </span>
+            </label>
+            <label class="label cursor-pointer justify-start gap-3 py-0">
+              <input id="set-allow-download" type="checkbox" class="toggle toggle-sm"
+                     {% if game_allow_download %}checked{% endif %}>
+              <span class="label-text text-sm leading-snug">
+                Allow JSON download
+                <span class="block text-[11px] opacity-50">OpenTD export format</span>
+              </span>
+            </label>
+            {% if game_share_code %}
+            <p class="text-[11px] opacity-70 break-all m-0">
+              Play URL:
+              <a class="link" id="share-play-url" href="{% url 'play_game' game_share_code %}">{% url 'play_game' game_share_code %}</a>
+            </p>
+            {% endif %}
+          </div>
+          {% endif %}
         </div>
       </details>
 

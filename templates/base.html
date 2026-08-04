@@ -23,12 +23,15 @@
       <a href="{% url 'home' %}" class="btn btn-ghost text-xl font-semibold tracking-tight">
         {{ site_name }}
       </a>
+      <a href="{% url 'gallery' %}" class="btn btn-ghost btn-sm hidden sm:inline-flex">Gallery</a>
       <a href="{% url 'editor' %}" class="btn btn-ghost btn-sm hidden sm:inline-flex">Editor</a>
+      <a href="{% url 'docs:index' %}" class="btn btn-ghost btn-sm hidden md:inline-flex">Docs</a>
     </div>
     <div class="navbar-end gap-1 sm:gap-2">
       {% if user.is_authenticated %}
-        <span class="hidden sm:inline text-sm opacity-70">{{ user.email }}</span>
-        <a href="{% url 'account_email' %}" class="btn btn-ghost btn-sm">Account</a>
+        <span class="hidden sm:inline text-sm opacity-70" title="Signed in">@{{ user.username }}</span>
+        <a href="{% url 'dashboard' %}" class="btn btn-ghost btn-sm">Dashboard</a>
+        <a href="{% url 'account_email' %}" class="btn btn-ghost btn-sm hidden sm:inline-flex">Account</a>
         <form method="post" action="{% url 'account_logout' %}" class="inline">
           {% csrf_token %}
           <button type="submit" class="btn btn-outline btn-sm">Log out</button>
@@ -55,8 +58,9 @@
               class="nav-signup-help__tip"
             >
               Build freely as a guest (1 map, limited tower/monster/wave types).
-              Sign up for the <strong>closed beta</strong> to raise type limits (more towers, monsters, and wave types)
-              and unlock player features like <strong>leaderboards</strong> later.
+              Sign up with a <strong>public username</strong> (email stays private) for the
+              <strong>closed beta</strong>: higher type limits, up to <strong>5 saved games</strong>,
+              and player features like <strong>leaderboards</strong> later.
               After approval we email a verification link; your editor draft is held while you wait.
             </span>
           </span>

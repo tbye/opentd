@@ -1,0 +1,27 @@
+{% extends "opentd_docs/base_docs.html" %}
+
+{% block docs_title %}Docs{% endblock %}
+
+{% block docs_body %}
+<h1 class="text-3xl font-bold tracking-tight">OpenTD documentation</h1>
+<p class="opacity-80 text-lg">
+  Learn how to design maps in the browser editor and how portable game files work.
+</p>
+
+<div class="grid sm:grid-cols-2 gap-4 not-prose mt-6">
+  <a href="{% url 'docs:editor' %}" class="card bg-base-100 border border-base-300 hover:border-primary transition-colors">
+    <div class="card-body">
+      <h2 class="card-title text-lg">Editor guide</h2>
+      <p class="text-sm opacity-70">Spawns, exits, game types, towers, monsters, waves, and playtesting.</p>
+    </div>
+  </a>
+  <a href="{% url 'docs:json' %}" class="card bg-base-100 border border-base-300 hover:border-primary transition-colors">
+    <div class="card-body">
+      <h2 class="card-title text-lg">JSON export format</h2>
+      <p class="text-sm opacity-70">
+        Portable <code>{{ format_id }}</code> v{{ format_version }} — import/export game definitions.
+      </p>
+    </div>
+  </a>
+</div>
+{% endblock %}

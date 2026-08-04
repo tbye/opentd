@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block page_title %}Dashboard — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-8">
+  <div class="flex flex-wrap items-start justify-between gap-3 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Your games</h1>
+      <p class="text-sm opacity-60 mt-1">
+        {{ game_count }} / {{ limits.max_games }} games ·
+        <a href="{% url 'docs:index' %}" class="link link-hover">Docs</a>
+      </p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="{% url 'editor' %}" class="btn btn-primary btn-sm">New game</a>
+      <a href="{% url 'gallery' %}" class="btn btn-ghost btn-sm">Gallery</a>
+    </div>
+  </div>
+
+  {# Import #}
+  <div class="card bg-base-100 border border-base-300 mb-8">
+    <div class="card-body py-4 gap-3">
+      <h2 class="font-semibold text-base">Import OpenTD JSON</h2>
+      <p class="text-xs opacity-60">
+        Upload a <code>.opentd.json</code> export or paste JSON.
+        See the <a href="{% url 'docs:json' %}" class="link">format docs</a>.
+      </p>
+      <form method="post" action="{% url 'import_game' %}" enctype="multipart/form-data" class="flex flex-wrap gap-2 items-end">
+        {% csrf_token %}
+        <label class="form-control">
+          <span class="label-text text-xs">File</span>
+          <input type="file" name="file" accept="application/json,.json,.opentd.json" class="file-input file-input-bordered file-input-sm w-full max-w-xs">
+        </label>
+        <button type="submit" class="btn btn-outline btn-sm">Import</button>
+      </form>
+    </div>
+  </div>
+
+  {% if games %}
+    <ul class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {% for game in games %}
+        <li class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body gap-2">
+            <div class="flex items-start justify-between gap-2">
+              <h3 class="card-title text-base leading-snug">{{ game.title }}</h3>
+              <span class="badge badge-ghost badge-sm shrink-0">{{ game.game_type_label }}</span>
+            </div>
+            <p class="text-xs opacity-60">
+              Updated {{ game.updated_at|timesince }} ago
+              {% if game.is_public %}· <span class="text-success">Public</span>{% else %}· Private{% endif %}
+              {% if game.allow_download %}· Download on{% endif %}
+            </p>
+            <div class="card-actions justify-end mt-2 flex-wrap">
+              <a href="{% url 'editor' %}?game={{ game.pk }}" class="btn btn-sm btn-primary">Edit</a>
+              <a href="{% url 'play_game' game.share_code %}" class="btn btn-sm btn-success">Play</a>
+              {% if game.is_public %}
+                <button type="button" class="btn btn-sm btn-ghost"
+                        data-copy="{% if request.is_secure %}https{% else %}http{% endif %}://{{ request.get_host }}{% url 'play_game' game.share_code %}"
+                        onclick="navigator.clipboard.writeText(this.dataset.copy); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy link',1200)">
+                  Copy link
+                </button>
+              {% endif %}
+              {% if game.allow_download or True %}
+                <a href="{% url 'export_game' game.share_code %}" class="btn btn-sm btn-outline">Export JSON</a>
+              {% endif %}
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="alert">
+      <span>No games yet. <a href="{% url 'editor' %}" class="link font-semibold">Open the editor</a> or import a JSON file above.</span>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

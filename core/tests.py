@@ -34,6 +34,19 @@ class GameSchemaTests(TestCase):
         doc = normalize_game_document({"towers": towers}, limits=GUEST_LIMITS)
         self.assertLessEqual(len(doc["towers"]), GUEST_LIMITS.max_towers)
 
+    def test_export_import_roundtrip(self):
+        from .export_format import build_export_payload, parse_import_payload
+        from .limits import REGISTERED_LIMITS
+
+        base = default_game_document(title="Round trip")
+        payload = build_export_payload(
+            title="Round trip", definition=base, limits=REGISTERED_LIMITS
+        )
+        self.assertEqual(payload["format"], "opentd.game")
+        title, definition = parse_import_payload(payload, limits=REGISTERED_LIMITS)
+        self.assertEqual(title, "Round trip")
+        self.assertEqual(definition["settings"]["width"], base["settings"]["width"])
+
     def test_default_has_entities(self):
         doc = default_game_document()
         self.assertTrue(doc["towers"])

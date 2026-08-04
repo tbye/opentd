@@ -35,10 +35,27 @@
         {% endif %}
 
         <label class="form-control w-full">
+          <span class="label-text">Username</span>
+          <input type="text" name="username" value="{{ form.username.value|default:'' }}"
+                 required autocomplete="username" maxlength="30" minlength="3"
+                 pattern="[A-Za-z][A-Za-z0-9_-]{2,29}"
+                 placeholder="shown publicly as credit"
+                 class="input input-bordered w-full {% if form.username.errors %}input-error{% endif %}">
+          <span class="label-text-alt opacity-60">
+            Public name when players credit your games. 3–30 chars; start with a letter.
+            Email stays private.
+          </span>
+          {% for error in form.username.errors %}
+            <span class="label-text-alt text-error">{{ error }}</span>
+          {% endfor %}
+        </label>
+
+        <label class="form-control w-full">
           <span class="label-text">{% trans "Email" %}</span>
           <input type="email" name="email" value="{{ form.email.value|default:'' }}"
                  required autocomplete="email"
                  class="input input-bordered w-full {% if form.email.errors %}input-error{% endif %}">
+          <span class="label-text-alt opacity-60">Private — used for login and account recovery only.</span>
           {% for error in form.email.errors %}
             <span class="label-text-alt text-error">{{ error }}</span>
           {% endfor %}

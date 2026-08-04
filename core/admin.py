@@ -1,17 +1,72 @@
 from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.urls import reverse
 from django.utils.html import format_html
 
-from .models import Game, PendingGame, RateLimitBucket, SignupApplication
+from .models import (
+    Game,
+    PendingGame,
+    RateLimitBucket,
+    SignupApplication,
+    UserProfile,
+)
+
+User = get_user_model()
+
+
+class UserProfileInline(admin.StackedInline):
+    model = UserProfile
+    can_delete = False
+    fk_name = "user"
+    extra = 0
+    fields = ("max_games", "created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at")
+
+
+# Re-register User with profile inline so staff can set max_games per account.
+try:
+    admin.site.unregister(User)
+except admin.sites.NotRegistered:
+    pass
+
+
+@admin.register(User)
+class UserAdmin(DjangoUserAdmin):
+    inlines = (UserProfileInline,)
+    list_display = DjangoUserAdmin.list_display + ("profile_max_games",)
+
+    @admin.display(description="Max games")
+    def profile_max_games(self, obj):
+        profile = getattr(obj, "profile", None)
+        if profile is None:
+            return "—"
+        return profile.max_games
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "max_games", "updated_at", "created_at")
+    list_editable = ("max_games",)
+    search_fields = ("user__email", "user__username")
+    raw_id_fields = ("user",)
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(Game)
 class GameAdmin(admin.ModelAdmin):
-    list_display = ("title", "owner", "updated_at", "created_at")
-    list_filter = ("updated_at",)
-    search_fields = ("title", "owner__email", "owner__username")
+    list_display = (
+        "title",
+        "owner",
+        "is_public",
+        "allow_download",
+        "share_code",
+        "updated_at",
+    )
+    list_filter = ("is_public", "allow_download", "updated_at")
+    search_fields = ("title", "share_code", "owner__email", "owner__username")
     raw_id_fields = ("owner",)
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at", "share_code")
 
 
 @admin.register(PendingGame)

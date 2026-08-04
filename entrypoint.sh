@@ -10,6 +10,19 @@ uv run --no-sync python -c "from django.conf import settings; import django; imp
 echo " === Running database migrations... === "
 uv run --no-sync python manage.py migrate --noinput
 
+echo " === Syncing Sites framework (OpenTD.org)... === "
+uv run --no-sync python -c "
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'opentd.settings')
+import django
+django.setup()
+from django.conf import settings
+from django.contrib.sites.models import Site
+domain = (settings.SITE_DOMAIN or 'opentd.org').replace('https://','').replace('http://','').split('/')[0]
+Site.objects.update_or_create(pk=settings.SITE_ID, defaults={'name': settings.SITE_NAME or 'OpenTD.org', 'domain': domain})
+print('Site:', domain, settings.SITE_NAME)
+"
+
 # Create superuser using Django's built-in command (only if password is set)
 if [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then
   echo " === Creating Django superuser (if it doesn't already exist)... === "

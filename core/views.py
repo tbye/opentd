@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import random
 
 from allauth.account.models import EmailAddress
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -16,8 +17,9 @@ from .drafts import (
     load_editor_document,
     save_draft,
 )
+from .export_format import build_export_payload, parse_import_payload
 from .forms import turnstile_context
-from .game_schema import normalize_game_document
+from .game_schema import GAME_TYPE_LABELS, normalize_game_document
 from .limits import (
     MAX_DOCUMENT_BYTES,
     MAX_REQUEST_BODY_BYTES,
@@ -37,10 +39,164 @@ from .ratelimit import (
 
 
 def home(request: HttpRequest) -> HttpResponse:
-    games = []
-    if request.user.is_authenticated:
-        games = list(Game.objects.filter(owner=request.user)[:12])
-    return render(request, "home.html", {"games": games})
+    """Marketing homepage with a few random public games."""
+    public_ids = list(
+        Game.objects.filter(is_public=True).values_list("pk", flat=True)[:200]
+    )
+    random.shuffle(public_ids)
+    pick = public_ids[:6]
+    featured_map = {
+        g.pk: g
+        for g in Game.objects.filter(pk__in=pick).select_related("owner")
+    }
+    featured = [featured_map[i] for i in pick if i in featured_map]
+    return render(
+        request,
+        "home.html",
+        {
+            "featured_games": featured,
+            "game_type_labels": GAME_TYPE_LABELS,
+        },
+    )
+
+
+@login_required
+@require_GET
+def dashboard(request: HttpRequest) -> HttpResponse:
+    """Creator dashboard: cards for owned games + import."""
+    games = list(
+        Game.objects.filter(owner=request.user)
+        .select_related("owner")
+        .order_by("-updated_at")
+    )
+    limits = limits_for_request(request)
+    return render(
+        request,
+        "dashboard.html",
+        {
+            "games": games,
+            "limits": limits_to_dict(limits),
+            "game_count": len(games),
+        },
+    )
+
+
+@require_GET
+def gallery(request: HttpRequest) -> HttpResponse:
+    """Public gallery of playable games."""
+    qs = (
+        Game.objects.filter(is_public=True)
+        .select_related("owner")
+        .order_by("-updated_at")
+    )
+    game_type = (request.GET.get("type") or "").strip()
+    if game_type in GAME_TYPE_LABELS:
+        # Filter in Python for JSONField simplicity (SQLite-friendly enough at beta scale)
+        games = [g for g in qs[:200] if g.game_type == game_type]
+    else:
+        games = list(qs[:100])
+        game_type = ""
+    return render(
+        request,
+        "gallery.html",
+        {
+            "games": games,
+            "filter_type": game_type,
+            "game_type_labels": GAME_TYPE_LABELS,
+        },
+    )
+
+
+@require_GET
+def play_game(request: HttpRequest, share_code: str) -> HttpResponse:
+    """Player-facing play page (shareable)."""
+    game = get_object_or_404(Game.objects.select_related("owner"), share_code=share_code)
+    is_owner = request.user.is_authenticated and game.owner_id == request.user.id
+    if not game.is_public and not is_owner:
+        return HttpResponseForbidden("This game is not public.")
+    document = normalize_game_document(
+        game.definition, limits=limits_for_request(request)
+    )
+    return render(
+        request,
+        "play.html",
+        {
+            "game": game,
+            "game_document": document,
+            "game_document_json": json.dumps(document),
+            "is_owner": is_owner,
+            "can_download": game.allow_download or is_owner,
+        },
+    )
+
+
+@require_GET
+def export_game_json(request: HttpRequest, share_code: str) -> HttpResponse:
+    """Download OpenTD JSON export when allow_download (or owner)."""
+    game = get_object_or_404(Game, share_code=share_code)
+    is_owner = request.user.is_authenticated and game.owner_id == request.user.id
+    if not game.allow_download and not is_owner:
+        return HttpResponseForbidden("Download is disabled for this game.")
+    if not game.is_public and not is_owner:
+        return HttpResponseForbidden("This game is not public.")
+    limits = limits_for_request(request)
+    payload = build_export_payload(
+        title=game.title, definition=game.definition, limits=limits
+    )
+    body = json.dumps(payload, indent=2, ensure_ascii=False)
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in game.title)[:40]
+    resp = HttpResponse(body, content_type="application/json; charset=utf-8")
+    resp["Content-Disposition"] = f'attachment; filename="{safe_name or "game"}.opentd.json"'
+    return resp
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def import_game(request: HttpRequest) -> HttpResponse:
+    """Import a portable OpenTD JSON file as a new owned game."""
+    limits = limits_for_request(request)
+    if request.method == "GET":
+        return redirect("dashboard")
+
+    owned = Game.objects.filter(owner=request.user).count()
+    if owned >= limits.max_games:
+        messages.error(
+            request,
+            f"You already have {owned} games (limit {limits.max_games}).",
+        )
+        return redirect("dashboard")
+
+    upload = request.FILES.get("file")
+    raw_text = request.POST.get("json_text", "")
+    try:
+        if upload:
+            data = upload.read(MAX_REQUEST_BODY_BYTES + 1)
+            if len(data) > MAX_REQUEST_BODY_BYTES:
+                raise ValueError("File too large.")
+            payload = json.loads(data.decode("utf-8"))
+        elif raw_text.strip():
+            if len(raw_text.encode("utf-8")) > MAX_REQUEST_BODY_BYTES:
+                raise ValueError("JSON text too large.")
+            payload = json.loads(raw_text)
+        else:
+            raise ValueError("Choose a JSON file or paste JSON.")
+        title, definition = parse_import_payload(payload, limits=limits)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        messages.error(request, f"Invalid JSON: {exc}")
+        return redirect("dashboard")
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("dashboard")
+
+    game = Game.objects.create(
+        owner=request.user,
+        title=title,
+        definition=definition,
+        is_public=False,
+        allow_download=False,
+    )
+    messages.success(request, f'Imported “{game.title}”.')
+    return redirect(f"/editor/?game={game.pk}")
 
 
 @require_GET
@@ -79,6 +235,9 @@ def editor(request: HttpRequest) -> HttpResponse:
             "editor_limits": limits_to_dict(limits),
             "editor_limits_json": json.dumps(limits_to_dict(limits)),
             "max_document_bytes": MAX_DOCUMENT_BYTES,
+            "game_is_public": bool(owned_game.is_public) if owned_game else False,
+            "game_allow_download": bool(owned_game.allow_download) if owned_game else False,
+            "game_share_code": owned_game.share_code if owned_game else "",
         },
     )
 
@@ -218,8 +377,21 @@ def save_owned_game(request: HttpRequest, game_id: int) -> JsonResponse:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
     game.definition = definition
     game.title = definition.get("title") or game.title
+    if "is_public" in payload:
+        game.is_public = bool(payload.get("is_public"))
+    if "allow_download" in payload:
+        game.allow_download = bool(payload.get("allow_download"))
     game.save()
-    return JsonResponse({"ok": True, "game_id": game.pk, "title": game.title})
+    return JsonResponse(
+        {
+            "ok": True,
+            "game_id": game.pk,
+            "title": game.title,
+            "share_code": game.share_code,
+            "is_public": game.is_public,
+            "allow_download": game.allow_download,
+        }
+    )
 
 
 @require_POST
@@ -233,10 +405,11 @@ def create_game_from_editor(request: HttpRequest) -> JsonResponse:
     limits = limits_for_request(request)
     owned = Game.objects.filter(owner=request.user).count()
     if owned >= limits.max_games:
+        n = limits.max_games
         return JsonResponse(
             {
                 "ok": False,
-                "error": f"You can only have {limits.max_games} game on this account.",
+                "error": f"You can only have {n} game{'s' if n != 1 else ''} on this account.",
             },
             status=400,
         )
@@ -252,8 +425,19 @@ def create_game_from_editor(request: HttpRequest) -> JsonResponse:
         owner=request.user,
         title=definition.get("title") or "Untitled game",
         definition=definition,
+        is_public=bool(payload.get("is_public", False)),
+        allow_download=bool(payload.get("allow_download", False)),
     )
-    return JsonResponse({"ok": True, "game_id": game.pk, "title": game.title})
+    return JsonResponse(
+        {
+            "ok": True,
+            "game_id": game.pk,
+            "title": game.title,
+            "share_code": game.share_code,
+            "is_public": game.is_public,
+            "allow_download": game.allow_download,
+        }
+    )
 
 
 @require_GET

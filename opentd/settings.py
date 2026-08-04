@@ -89,6 +89,7 @@ INSTALLED_APPS = [
     "django_htmx",
     # Local
     "core.apps.CoreConfig",
+    "opentd_docs.apps.OpentdDocsConfig",
 ]
 
 
@@ -197,9 +198,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 SITE_ID = 1
 
 # Public branding / absolute links in email
-SITE_NAME = os.environ.get("SITE_NAME", "OpenTD").strip() or "OpenTD"
-SITE_DOMAIN = os.environ.get("SITE_DOMAIN", "localhost:8000").strip() or "localhost:8000"
-PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+SITE_NAME = os.environ.get("SITE_NAME", "OpenTD.org").strip() or "OpenTD.org"
+SITE_DOMAIN = os.environ.get("SITE_DOMAIN", "opentd.org").strip() or "opentd.org"
+PUBLIC_BASE_URL = (
+    os.environ.get("PUBLIC_BASE_URL", "https://opentd.org").strip().rstrip("/")
+    or "https://opentd.org"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -211,25 +215,37 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 LOGIN_URL = "account_login"
-LOGIN_REDIRECT_URL = "editor"
+LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "home"
 ACCOUNT_LOGOUT_REDIRECT_URL = "home"
-# After confirming email (and auto-login), land in the editor with their game.
-ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = "/editor/"
+# After confirming email (and auto-login), land on the creator dashboard.
+ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = "/dashboard/"
 ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = "/accounts/login/"
 
-# Email-only accounts (username still exists on the default User model;
-# allauth generates one when it is not collected at signup).
-ACCOUNT_LOGIN_METHODS = {"email"}
-ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
+# Public credit uses username (not email). Login accepts either email or username.
+ACCOUNT_LOGIN_METHODS = {"email", "username"}
+ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 ACCOUNT_CONFIRM_EMAIL_ON_GET = True
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
-ACCOUNT_EMAIL_SUBJECT_PREFIX = f"[{SITE_NAME}] "
+ACCOUNT_EMAIL_SUBJECT_PREFIX = "[OpenTD.org] "
 ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
 ACCOUNT_SESSION_REMEMBER = True
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_PREVENT_ENUMERATION = True
+# Usernames shown publicly when crediting game authors — keep them human-friendly.
+ACCOUNT_USERNAME_MIN_LENGTH = 3
+ACCOUNT_USERNAME_BLACKLIST = [
+    "admin",
+    "administrator",
+    "root",
+    "opentd",
+    "support",
+    "moderator",
+    "staff",
+    "null",
+    "undefined",
+]
 
 
 # ---------------------------------------------------------------------------

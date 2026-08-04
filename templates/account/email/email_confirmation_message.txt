@@ -1,0 +1,11 @@
+{% extends "account/email/base_message.txt" %}
+{% load account %}
+{% load i18n %}
+
+{% block content %}{% autoescape off %}{% user_display user as user_display %}You're receiving this email because user {{ user_display }} registered an account on OpenTD.org.
+
+{% if code %}Your email verification code is listed below. Please enter it in your open browser window.
+
+{{ code }}{% else %}To confirm your email address and finish setting up your account, open this link:
+
+{{ activate_url }}{% endif %}{% endautoescape %}{% endblock content %}

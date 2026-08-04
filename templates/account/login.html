@@ -26,9 +26,9 @@
         {% endif %}
 
         <label class="form-control w-full">
-          <span class="label-text">{% trans "Email" %}</span>
-          <input type="email" name="login" value="{{ form.login.value|default:'' }}"
-                 required autocomplete="email"
+          <span class="label-text">Email or username</span>
+          <input type="text" name="login" value="{{ form.login.value|default:'' }}"
+                 required autocomplete="username"
                  class="input input-bordered w-full {% if form.login.errors %}input-error{% endif %}">
           {% for error in form.login.errors %}
             <span class="label-text-alt text-error">{{ error }}</span>
