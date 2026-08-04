@@ -39,6 +39,18 @@ class AccountAdapter(DefaultAccountAdapter):
                 app.status,
             )
             return
+        # Guard against misconfigured empty DEFAULT_FROM_EMAIL in production.
+        from django.conf import settings
+
+        from_email = (getattr(settings, "DEFAULT_FROM_EMAIL", None) or "").strip()
+        if not from_email or "@" not in from_email:
+            logger.error(
+                "DEFAULT_FROM_EMAIL is missing or invalid (%r); "
+                "cannot send verification mail for user %s",
+                from_email,
+                user.pk,
+            )
+            return
         return super().send_confirmation_mail(request, emailconfirmation, signup)
 
     def get_signup_redirect_url(self, request):

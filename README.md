@@ -117,7 +117,7 @@ With a Resend key:
 ```bash
 # .env
 RESEND_API_KEY=re_...
-DEFAULT_FROM_EMAIL=OpenTD <you@your-verified-domain.com>
+DEFAULT_FROM_EMAIL=OpenTD <support@opentd.org>
 ```
 
 django-anymail talks to Resend’s HTTP API (not a long-lived SMTP connection).

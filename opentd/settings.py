@@ -238,12 +238,21 @@ ACCOUNT_PREVENT_ENUMERATION = True
 # Resend is used as the outbound mail provider (API, not raw SMTP sockets).
 # Set RESEND_API_KEY in the environment (or .env). Without it, mail is printed
 # to the console so local signup/verification still works.
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
-DEFAULT_FROM_EMAIL = os.environ.get(
-    "DEFAULT_FROM_EMAIL",
-    f"{SITE_NAME} <onboarding@resend.dev>",
-)
-SERVER_EMAIL = os.environ.get("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+#
+# IMPORTANT: empty env vars (e.g. compose DEFAULT_FROM_EMAIL: ${X:-}) must not
+# override the default — os.environ.get("K", default) returns "" if K is set blank.
+def _env_nonempty(name: str, default: str = "") -> str:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    val = val.strip()
+    return val if val else default
+
+
+RESEND_API_KEY = _env_nonempty("RESEND_API_KEY", "")
+_DEFAULT_FROM = f"{SITE_NAME} <support@opentd.org>"
+DEFAULT_FROM_EMAIL = _env_nonempty("DEFAULT_FROM_EMAIL", _DEFAULT_FROM)
+SERVER_EMAIL = _env_nonempty("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 if RESEND_API_KEY:
     EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"

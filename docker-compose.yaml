@@ -13,7 +13,8 @@ services:
       SITE_NAME: ${SITE_NAME:-OpenTD}
       SITE_DOMAIN: ${SITE_DOMAIN:-opentd.org}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-}
+      # Must be a real address on your Resend-verified domain in production.
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-OpenTD <support@opentd.org>}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-}
       DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-}
