@@ -12,6 +12,7 @@ from .limits import (
     GUEST_LIMITS,
     MAX_DOCUMENT_BYTES,
     MAX_ID_LEN,
+    MAX_ROUNDS,
     REGISTERED_LIMITS,
     TierLimits,
 )
@@ -302,7 +303,7 @@ def default_wave_type(*, monster_id: str = "") -> dict[str, Any]:
         "id": _new_id("wav"),
         "name": "Default wave",
         # Human-friendly schedule: "1, 3, 5, 10-15"
-        "rounds": "1-",
+        "rounds": f"1-{MAX_ROUNDS}",
         "groups": [
             {
                 "monster_id": monster_id,
@@ -320,11 +321,14 @@ def default_wave_type(*, monster_id: str = "") -> dict[str, Any]:
     }
 
 
-def parse_round_spec(spec: str) -> list[int]:
+def parse_round_spec(spec: str, *, max_round: int = MAX_ROUNDS) -> list[int]:
     """
     Parse '1, 3, 5, 10-15, 20-' into sorted unique positive rounds.
-    Open-ended '20-' means 20 through a high cap (used at runtime with max round).
+
+    - Closed ranges end at the stated last number (the end of the game for that schedule).
+    - Open-ended '20-' means 20 through max_round (tier cap, never above MAX_ROUNDS).
     """
+    cap = max(1, min(MAX_ROUNDS, int(max_round or MAX_ROUNDS)))
     rounds: set[int] = set()
     if not isinstance(spec, str):
         return []
@@ -341,8 +345,10 @@ def parse_round_spec(spec: str) -> list[int]:
             except ValueError:
                 continue
             if right == "":
-                # Open-ended: store as large range; runtime clamps by progress
-                b = 9999
+                # Open-ended: from a through tier max_round (if a is in range).
+                if a > cap:
+                    continue
+                b = cap
             else:
                 try:
                     b = int(right)
@@ -350,7 +356,9 @@ def parse_round_spec(spec: str) -> list[int]:
                     continue
             lo, hi = (a, b) if a <= b else (b, a)
             lo = max(1, lo)
-            hi = min(9999, hi)
+            hi = min(cap, hi)
+            if lo > hi:
+                continue
             for n in range(lo, hi + 1):
                 rounds.add(n)
         else:
@@ -358,12 +366,39 @@ def parse_round_spec(spec: str) -> list[int]:
                 n = int(p)
             except ValueError:
                 continue
-            if n >= 1:
+            if 1 <= n <= cap:
                 rounds.add(n)
     return sorted(rounds)
 
 
-def normalize_wave_type(raw: Any, *, monsters: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def compact_round_list(rounds: list[int]) -> str:
+    """Collapse sorted rounds into a human schedule string (e.g. 1,3,5-10)."""
+    if not rounds:
+        return "1"
+    parts: list[str] = []
+    start = prev = rounds[0]
+    for n in rounds[1:]:
+        if n == prev + 1:
+            prev = n
+            continue
+        if start == prev:
+            parts.append(str(start))
+        else:
+            parts.append(f"{start}-{prev}")
+        start = prev = n
+    if start == prev:
+        parts.append(str(start))
+    else:
+        parts.append(f"{start}-{prev}")
+    return ", ".join(parts)
+
+
+def normalize_wave_type(
+    raw: Any,
+    *,
+    monsters: list[dict[str, Any]] | None = None,
+    max_rounds: int = MAX_ROUNDS,
+) -> dict[str, Any]:
     monsters = monsters or []
     monster_ids = {str(m.get("id")) for m in monsters if m.get("id")}
     base = default_wave_type(
@@ -412,7 +447,11 @@ def normalize_wave_type(raw: Any, *, monsters: list[dict[str, Any]] | None = Non
                 }
             )
 
-    rounds = str(raw.get("rounds") or base["rounds"]).strip()[:120] or "1-"
+    rounds_raw = str(raw.get("rounds") or base["rounds"]).strip()[:120] or "1"
+    parsed = parse_round_spec(rounds_raw, max_round=max_rounds)
+    if not parsed:
+        parsed = list(range(1, min(max_rounds, 1) + 1)) or [1]
+    rounds = compact_round_list(parsed)
 
     return {
         "id": clean_id(raw.get("id") or base["id"], fallback=_new_id("wav")),
@@ -428,21 +467,42 @@ def normalize_wave_types(
     *,
     monsters: list[dict[str, Any]],
     max_wave_types: int = 30,
+    max_rounds: int = MAX_ROUNDS,
 ) -> list[dict[str, Any]]:
     if not isinstance(raw, list) or not raw:
-        # One default wave covering all rounds, using first monster
-        return [
-            default_wave_type(
-                monster_id=str(monsters[0]["id"]) if monsters else ""
-            )
-        ]
+        # One default wave covering rounds 1..max_rounds for the tier
+        wt = default_wave_type(
+            monster_id=str(monsters[0]["id"]) if monsters else ""
+        )
+        wt["rounds"] = f"1-{max_rounds}" if max_rounds > 1 else "1"
+        return [wt]
     out: list[dict[str, Any]] = []
     for item in raw[: max(1, max_wave_types)]:
         if isinstance(item, dict):
-            out.append(normalize_wave_type(item, monsters=monsters))
-    return out or [
-        default_wave_type(monster_id=str(monsters[0]["id"]) if monsters else "")
-    ]
+            out.append(
+                normalize_wave_type(
+                    item, monsters=monsters, max_rounds=max_rounds
+                )
+            )
+    if not out:
+        wt = default_wave_type(
+            monster_id=str(monsters[0]["id"]) if monsters else ""
+        )
+        wt["rounds"] = f"1-{max_rounds}" if max_rounds > 1 else "1"
+        return [wt]
+    return out
+
+
+def compute_max_round_from_wave_types(
+    wave_types: list[dict[str, Any]], *, max_rounds: int = MAX_ROUNDS
+) -> int:
+    """Highest scheduled round across wave types (end of the game)."""
+    hi = 0
+    for wt in wave_types or []:
+        for n in parse_round_spec(str(wt.get("rounds") or ""), max_round=max_rounds):
+            if n > hi:
+                hi = n
+    return hi if hi >= 1 else 1
 
 
 def empty_grid(width: int, height: int) -> list[list[str]]:
@@ -474,6 +534,8 @@ def default_game_document(*, title: str = "Untitled game") -> dict[str, Any]:
             "start_delay_seconds": 15,
             # Seconds after a wave is cleared before the next wave.
             "between_waves_delay_seconds": 5,
+            # Highest playable round (derived from wave schedules; capped by tier).
+            "max_rounds": MAX_ROUNDS,
         },
         "grid": empty_grid(DEFAULT_WIDTH, DEFAULT_HEIGHT),
         # Multiple spawns/exits; ids default to "1", "2", … and may be renamed.
@@ -592,12 +654,18 @@ def normalize_game_document(
     # Truncate again if defaults pushed over (shouldn't) — enforce hard caps
     towers = towers[: caps.max_towers]
     monsters = monsters[: caps.max_monsters]
+    max_rounds = max(1, min(MAX_ROUNDS, int(getattr(caps, "max_rounds", MAX_ROUNDS) or MAX_ROUNDS)))
     wave_types = normalize_wave_types(
         raw.get("wave_types"),
         monsters=monsters,
         max_wave_types=caps.max_wave_types,
+        max_rounds=max_rounds,
     )
     wave_types = wave_types[: caps.max_wave_types]
+    # Last scheduled round ends the game (lives remaining → win).
+    settings["max_rounds"] = compute_max_round_from_wave_types(
+        wave_types, max_rounds=max_rounds
+    )
     spawns, exits = _sync_portals(
         grid,
         raw.get("spawns"),

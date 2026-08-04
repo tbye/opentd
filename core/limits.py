@@ -11,6 +11,12 @@ from django.http import HttpRequest
 DEFAULT_REGISTERED_MAX_GAMES = 5
 
 
+# Absolute ceiling for any wave schedule / playthrough.
+MAX_ROUNDS = 100
+# Guest (non-registered) developers may only schedule this many rounds.
+GUEST_MAX_ROUNDS = 10
+
+
 @dataclass(frozen=True)
 class TierLimits:
     """Caps for one editor session / account tier."""
@@ -19,6 +25,7 @@ class TierLimits:
     max_towers: int
     max_monsters: int
     max_wave_types: int
+    max_rounds: int
     # Human label for UI
     tier: str  # "guest" | "registered"
 
@@ -29,6 +36,7 @@ GUEST_LIMITS = TierLimits(
     max_towers=5,
     max_monsters=5,
     max_wave_types=3,
+    max_rounds=GUEST_MAX_ROUNDS,
     tier="guest",
 )
 
@@ -38,6 +46,7 @@ REGISTERED_LIMITS = TierLimits(
     max_towers=20,
     max_monsters=20,
     max_wave_types=10,
+    max_rounds=MAX_ROUNDS,
     tier="registered",
 )
 
@@ -80,6 +89,7 @@ def limits_for_request(request: HttpRequest | None) -> TierLimits:
                 max_towers=REGISTERED_LIMITS.max_towers,
                 max_monsters=REGISTERED_LIMITS.max_monsters,
                 max_wave_types=REGISTERED_LIMITS.max_wave_types,
+                max_rounds=REGISTERED_LIMITS.max_rounds,
                 tier="registered",
             )
     return GUEST_LIMITS

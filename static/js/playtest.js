@@ -510,6 +510,7 @@
     state.score = 0;
     state.wave = 0;
     state.waveAppearances = {};
+    state.maxRound = computeMaxRound(doc);
     state.monsters = [];
     state.towers = [];
     state.shots = [];
@@ -526,6 +527,7 @@
       state.phase = "wave_active";
     }
     hidePlaceMenu();
+    hideEndModal();
 
     els.stage?.classList.add("is-playtesting");
     if (els.overlay) els.overlay.setAttribute("aria-hidden", "false");
@@ -538,6 +540,9 @@
     } else {
       setMsg(
         "Get ready — first wave in " + state.countdown + "s… " +
+          "(last round " +
+          state.maxRound +
+          ") " +
           (state._pendingWarning ? "Note: " + state._pendingWarning : ""),
         "ok"
       );
@@ -604,7 +609,21 @@
     setMsg("Stopped — back to edit mode.");
   }
 
-  function parseRoundSpec(spec) {
+  var ABS_MAX_ROUNDS = 100;
+
+  function tierMaxRounds(doc) {
+    const fromDoc = doc && doc.settings && Number(doc.settings.max_rounds);
+    if (Number.isFinite(fromDoc) && fromDoc >= 1) {
+      return Math.min(ABS_MAX_ROUNDS, fromDoc | 0);
+    }
+    return ABS_MAX_ROUNDS;
+  }
+
+  function parseRoundSpec(spec, maxRound) {
+    const cap = Math.max(
+      1,
+      Math.min(ABS_MAX_ROUNDS, maxRound | 0 || ABS_MAX_ROUNDS)
+    );
     const rounds = new Set();
     if (!spec || typeof spec !== "string") return rounds;
     String(spec)
@@ -613,30 +632,51 @@
         const p = part.trim();
         if (!p) return;
         if (p.includes("-")) {
-          const [left, right] = p.split("-").map((x) => x.trim());
+          const bits = p.split("-");
+          const left = (bits[0] || "").trim();
+          const right = (bits[1] != null ? bits[1] : "").trim();
           const a = parseInt(left || "1", 10);
           if (!Number.isFinite(a)) return;
-          const b = right === "" ? 9999 : parseInt(right, 10);
-          if (!Number.isFinite(b)) return;
+          let b;
+          if (right === "") {
+            // Open-ended: from a through tier max (if a is in range).
+            if (a > cap) return;
+            b = cap;
+          } else {
+            b = parseInt(right, 10);
+            if (!Number.isFinite(b)) return;
+          }
           const lo = Math.max(1, Math.min(a, b));
-          const hi = Math.min(9999, Math.max(a, b));
+          const hi = Math.min(cap, Math.max(a, b));
+          if (lo > hi) return;
           for (let n = lo; n <= hi; n++) rounds.add(n);
         } else {
           const n = parseInt(p, 10);
-          if (Number.isFinite(n) && n >= 1) rounds.add(n);
+          if (Number.isFinite(n) && n >= 1 && n <= cap) rounds.add(n);
         }
       });
     return rounds;
   }
 
+  function computeMaxRound(doc) {
+    const cap = tierMaxRounds(doc);
+    let hi = 0;
+    (doc.wave_types || []).forEach((wt) => {
+      parseRoundSpec(wt.rounds || "", cap).forEach((n) => {
+        if (n > hi) hi = n;
+      });
+    });
+    return hi >= 1 ? Math.min(cap, hi) : Math.min(cap, 1);
+  }
+
   function findWaveTypeForRound(doc, round) {
     const types = doc.wave_types || [];
+    const cap = tierMaxRounds(doc);
     for (let i = 0; i < types.length; i++) {
-      const rounds = parseRoundSpec(types[i].rounds || "");
+      const rounds = parseRoundSpec(types[i].rounds || "", cap);
       if (rounds.has(round)) return types[i];
     }
-    // Fallback: first wave type, or null
-    return types[0] || null;
+    return null;
   }
 
   function scaleStat(base, scalingRule, n) {
@@ -679,6 +719,11 @@
   function queueWave() {
     const doc = state.doc;
     if (!doc) return;
+    if (!state.maxRound) state.maxRound = computeMaxRound(doc);
+    if (state.wave >= state.maxRound) {
+      endGame(true);
+      return;
+    }
     state.phase = "wave_active";
     state.countdown = 0;
     state.wave += 1;
@@ -687,20 +732,13 @@
     if (!state.waveAppearances) state.waveAppearances = {};
 
     let waveType = findWaveTypeForRound(doc, round);
-    // If no type matches this round, skip until one does (or fall back)
+    // No schedule match past the designed end — treat as victory path.
     if (!waveType) {
-      waveType = (doc.wave_types && doc.wave_types[0]) || null;
-    }
-    // If schedule doesn't include this round but types exist, still try match only
-    if (doc.wave_types && doc.wave_types.length) {
-      const exact = findWaveTypeForRound(doc, round);
-      if (!exact) {
-        // Advance through empty rounds? For playtest, find next scheduled round
-        // or use fallback composition from first type with appearance scaling by round
-        waveType = doc.wave_types[0];
-      } else {
-        waveType = exact;
+      if (state.wave >= state.maxRound) {
+        endGame(true);
+        return;
       }
+      waveType = (doc.wave_types && doc.wave_types[0]) || null;
     }
 
     let appearance = 1;
@@ -788,12 +826,20 @@
   }
 
   function beginBetweenWaves() {
+    // Wave is over — remove lingering projectile visuals immediately.
+    clearProjectiles();
+    if (state.wave >= (state.maxRound || 0) && state.lives > 0) {
+      endGame(true);
+      return;
+    }
+    if (state.wave >= (state.maxRound || 0)) {
+      endGame(false);
+      return;
+    }
     const delay = Math.max(
       0,
       (state.doc && state.doc.settings.between_waves_delay_seconds) | 0
     );
-    // Wave is over — remove lingering projectile visuals immediately.
-    clearProjectiles();
     if (delay <= 0) {
       queueWave();
       return;
@@ -802,7 +848,94 @@
     state.countdown = delay;
     state.spawnQueue = [];
     state.spawnTimer = 0;
-    setMsg("Wave cleared — next wave in " + delay + "s…");
+    setMsg(
+      "Wave cleared — next wave in " +
+        delay +
+        "s… (" +
+        state.wave +
+        "/" +
+        state.maxRound +
+        ")",
+      "ok"
+    );
+    updateHud();
+  }
+
+  function hideEndModal() {
+    const modal = document.getElementById("pt-end-modal");
+    if (modal) {
+      modal.hidden = true;
+      modal.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  function showEndModal(won) {
+    let modal = document.getElementById("pt-end-modal");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "pt-end-modal";
+      modal.className = "pt-end-modal";
+      modal.innerHTML =
+        '<div class="pt-end-modal__card" role="dialog" aria-modal="true" aria-labelledby="pt-end-title">' +
+        '<p id="pt-end-title" class="pt-end-modal__title"></p>' +
+        '<p class="pt-end-modal__sub" id="pt-end-sub"></p>' +
+        '<button type="button" class="btn btn-primary" id="pt-end-replay">Replay</button>' +
+        "</div>";
+      document.body.appendChild(modal);
+      modal.querySelector("#pt-end-replay").addEventListener("click", () => {
+        hideEndModal();
+        start();
+      });
+    }
+    const title = modal.querySelector("#pt-end-title");
+    const sub = modal.querySelector("#pt-end-sub");
+    if (won) {
+      title.textContent = "Congrats, You win!";
+      sub.textContent =
+        "You cleared all " +
+        (state.maxRound || state.wave) +
+        " rounds with " +
+        state.lives +
+        " life" +
+        (state.lives === 1 ? "" : "s") +
+        " left.";
+      modal.classList.remove("is-loss");
+      modal.classList.add("is-win");
+    } else {
+      title.textContent = "You lost.";
+      sub.textContent =
+        "Lives depleted on round " +
+        (state.wave || 1) +
+        " of " +
+        (state.maxRound || "?") +
+        ".";
+      modal.classList.remove("is-win");
+      modal.classList.add("is-loss");
+    }
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+  }
+
+  function endGame(won) {
+    if (state.status === "won" || state.status === "lost") return;
+    state.status = won ? "won" : "lost";
+    state.paused = true;
+    state.phase = "ended";
+    state.spawnQueue = [];
+    clearProjectiles();
+    setControlsRunning(true);
+    if (els.play) {
+      els.play.disabled = false;
+      const label = els.play.querySelector("span:last-child");
+      // keep button usable for resume is wrong — replay via modal
+    }
+    if (els.pause) els.pause.disabled = true;
+    if (els.waveBtn) els.waveBtn.disabled = true;
+    setMsg(
+      won ? "Victory — all rounds cleared!" : "Defeat — no lives left.",
+      won ? "ok" : "error"
+    );
+    showEndModal(won);
     updateHud();
   }
 
@@ -1026,10 +1159,7 @@
         state.monsters.splice(i, 1);
         if (state.lives <= 0) {
           state.lives = 0;
-          state.status = "lost";
-          state.paused = true;
-          setMsg("Defeat — lives depleted. Press Stop to edit, or Resume after fixing? Stop to edit.", "error");
-          setControlsRunning(true);
+          endGame(false);
         }
         continue;
       }
@@ -1888,5 +2018,6 @@
     init,
     isActive: () => state.active,
     stop,
+    start,
   };
 })();

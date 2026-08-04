@@ -138,6 +138,7 @@ def promote_pending_to_game(user: AbstractBaseUser) -> Game | None:
         max_towers=REGISTERED_LIMITS.max_towers,
         max_monsters=REGISTERED_LIMITS.max_monsters,
         max_wave_types=REGISTERED_LIMITS.max_wave_types,
+        max_rounds=REGISTERED_LIMITS.max_rounds,
         tier="registered",
     )
     definition = normalize_game_document(pending.definition, limits=caps)

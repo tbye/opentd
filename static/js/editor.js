@@ -1234,7 +1234,7 @@
     return {
       id: uid("wav"),
       name: "Default wave",
-      rounds: "1-",
+      rounds: "1-" + (limits.max_rounds || 100),
       groups: [{ monster_id: mid, count: 5 }],
       scaling: [
         {
@@ -1306,9 +1306,9 @@
       html += `<label class="form-control w-full"><span class="label-text text-[10px]">Name</span>`;
       html += `<input type="text" class="input input-xs input-bordered w-full" data-wf="name" value="${escapeAttr(wt.name || "")}"></label>`;
 
-      html += `<label class="form-control w-full"><span class="label-text text-[10px]">Rounds (e.g. 1, 3, 5, 10-15 or 1-)</span>`;
-      html += `<input type="text" class="input input-xs input-bordered w-full" data-wf="rounds" value="${escapeAttr(wt.rounds || "1-")}" placeholder="1, 3, 5, 10-15"></label>`;
-      html += `<p class="text-[10px] opacity-55 leading-snug">Which <strong>game rounds</strong> use this wave type. <code>10-15</code> is a range; <code>20-</code> means 20 onward.</p>`;
+      html += `<label class="form-control w-full"><span class="label-text text-[10px]">Rounds (e.g. 1, 3, 5, 10-15)</span>`;
+      html += `<input type="text" class="input input-xs input-bordered w-full" data-wf="rounds" value="${escapeAttr(wt.rounds || "1")}" placeholder="1, 3, 5, 10-15"></label>`;
+      html += `<p class="text-[10px] opacity-55 leading-snug">Which <strong>game rounds</strong> use this type. A range like <code>10-15</code> ends at 15 (end of that schedule). Open <code>20-</code> runs to your max rounds (${limits.max_rounds || 100}). Game ends after the last scheduled round.</p>`;
 
       // Monster groups
       html += `<div class="rounded-md border border-base-300 p-2 space-y-1.5 bg-base-100">`;
@@ -2014,6 +2014,7 @@
     const wv = (doc.wave_types || []).length;
     const tier =
       limits.tier === "registered" ? "registered" : "guest";
+    const maxR = limits.max_rounds || 100;
     el.textContent =
       "Limits (" +
       tier +
@@ -2029,6 +2030,8 @@
       wv +
       "/" +
       limits.max_wave_types +
+      " · rounds ≤" +
+      maxR +
       " · games " +
       limits.max_games;
   }
