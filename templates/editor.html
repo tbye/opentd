@@ -762,6 +762,83 @@
     margin-right: 0.35em;
     vertical-align: -0.08em;
   }
+  .game-type-picker {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    overflow: auto;
+    padding: 1.5rem 1rem;
+    /* DaisyUI 5 stores full colors in --color-base-*, not the old --b1 channels. */
+    background: var(--color-base-200);
+    color: var(--color-base-content);
+  }
+  .game-type-picker[hidden] {
+    display: none !important;
+  }
+  .game-type-picker__panel {
+    margin: auto;
+    width: min(60rem, 100%);
+  }
+  .game-type-picker__cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  @media (max-width: 800px) {
+    .game-type-picker__cards {
+      grid-template-columns: 1fr;
+    }
+  }
+  .game-type-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.45rem;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 1rem 1rem 1.15rem;
+    text-align: left;
+    font: inherit;
+    color: var(--color-base-content);
+    background: var(--color-base-100);
+    border: 1px solid var(--color-base-300);
+    border-radius: 0.85rem;
+    box-shadow: 0 1px 2px color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    cursor: pointer;
+  }
+  .game-type-card:hover,
+  .game-type-card:focus-visible {
+    border-color: var(--color-primary);
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary) 28%, transparent);
+  }
+  .game-type-card__title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .game-type-card__desc {
+    font-size: 0.8rem;
+    line-height: 1.45;
+    opacity: 0.75;
+  }
+  .game-type-picker__blank {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    margin-top: 1rem;
+    padding: 0.75rem 0.85rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-base-300);
+    background: var(--color-base-100);
+    cursor: pointer;
+  }
+  .game-type-picker__blank input {
+    margin-top: 0.15rem;
+    flex: 0 0 auto;
+  }
 </style>
 {% endblock %}
 
@@ -782,7 +859,7 @@
 >
   <script type="application/json" id="editor-limits-json">{{ editor_limits_json|safe }}</script>
   {# ── Left palette ─────────────────────────────────────────── #}
-  <aside class="editor-palette" aria-label="Editor palette">
+  <aside class="editor-palette" aria-label="Editor palette"{% if show_game_picker %} inert{% endif %}>
     <div class="editor-palette__header p-3 border-b border-base-300 bg-base-100">
       <div class="flex items-center gap-2">
         <input
@@ -821,48 +898,23 @@
           Game settings
         </summary>
         <div class="px-3 pb-3 pt-1 space-y-3 border-t border-base-300">
-          <fieldset class="space-y-2">
-            <legend class="text-xs font-semibold opacity-70 px-0">Game type</legend>
-            <label class="flex items-start gap-2 cursor-pointer p-2 rounded-lg border border-base-300 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/5">
-              <input type="radio" name="game-type" class="radio radio-sm mt-0.5" value="monster_march" id="gt-march"
-                     {% if game_document.settings.game_type != 'monster_rush' and game_document.settings.game_type != 'defend_the_castle' %}checked{% endif %}>
-              <span class="text-sm leading-snug">
-                <span class="font-medium">Monster March</span>
-                <span class="block text-[11px] opacity-60">Monsters follow the painted path toward an exit.</span>
-              </span>
-            </label>
-            <div class="rounded-lg border border-base-300 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/5 p-2 space-y-2 min-w-0">
-              <label class="flex items-start gap-2 cursor-pointer">
-                <input type="radio" name="game-type" class="radio radio-sm mt-0.5 shrink-0" value="monster_rush" id="gt-rush"
-                       {% if game_document.settings.game_type == 'monster_rush' %}checked{% endif %}>
-                <span class="text-sm leading-snug min-w-0 flex-1 whitespace-normal break-words">
-                  <span class="font-medium">Monster Rush</span>
-                  <span class="block text-[11px] opacity-60 whitespace-normal break-words">No fixed path. Players maze with towers &amp; walls. If blocked, monsters attack obstacles on the shortest route to the exit; when a free path opens they follow it and stop attacking.</span>
-                </span>
-              </label>
-              <div id="chaos-mode-wrap" class="ml-6 pl-2 border-l-2 border-base-300 min-w-0">
-                <label class="flex cursor-pointer justify-start gap-2 py-0.5 items-start w-full min-w-0 {% if game_document.settings.game_type != 'monster_rush' %}opacity-50{% endif %}" id="chaos-mode-label">
-                  <input id="set-chaos-mode" type="checkbox" class="toggle toggle-sm toggle-secondary mt-0.5 shrink-0"
-                         {% if game_document.settings.chaos_mode %}checked{% endif %}
-                         {% if game_document.settings.game_type != 'monster_rush' %}disabled{% endif %}>
-                  <span class="text-sm leading-snug min-w-0 flex-1 whitespace-normal break-words">
-                    Chaos mode
-                    <span class="block text-[11px] opacity-60 whitespace-normal break-words mt-0.5">
-                      Monsters keep destroying walls and towers along the shortest path to the exit even after a free lane exists.
-                    </span>
-                  </span>
-                </label>
-              </div>
-            </div>
-            <label class="flex items-start gap-2 cursor-pointer p-2 rounded-lg border border-base-300 hover:bg-base-200 has-[:checked]:border-primary has-[:checked]:bg-primary/5">
-              <input type="radio" name="game-type" class="radio radio-sm mt-0.5" value="defend_the_castle" id="gt-castle"
-                     {% if game_document.settings.game_type == 'defend_the_castle' %}checked{% endif %}>
-              <span class="text-sm leading-snug">
-                <span class="font-medium">Defend the Castle</span>
-                <span class="block text-[11px] opacity-60">Monsters try to destroy a central tower (the castle) rather than only marching off the map.</span>
-              </span>
-            </label>
-          </fieldset>
+          <label class="form-control w-full">
+            <span class="label-text text-xs">Game type</span>
+            <select id="set-game-type" class="select select-sm select-bordered w-full">
+              <option value="monster_march"{% if game_document.settings.game_type != 'monster_rush' and game_document.settings.game_type != 'defend_the_castle' %} selected{% endif %}>Monster March</option>
+              <option value="monster_rush"{% if game_document.settings.game_type == 'monster_rush' %} selected{% endif %}>Monster Rush</option>
+              <option value="defend_the_castle"{% if game_document.settings.game_type == 'defend_the_castle' %} selected{% endif %}>Defend the Castle</option>
+            </select>
+          </label>
+          <label class="label cursor-pointer justify-start gap-3 py-1 items-start {% if game_document.settings.game_type != 'monster_rush' %}opacity-50{% endif %}" id="chaos-mode-label">
+            <input id="set-chaos-mode" type="checkbox" class="toggle toggle-sm toggle-secondary mt-0.5"
+                   {% if game_document.settings.chaos_mode %}checked{% endif %}
+                   {% if game_document.settings.game_type != 'monster_rush' %}disabled{% endif %}>
+            <span class="label-text text-sm leading-snug">
+              Chaos mode
+              <span class="block text-[11px] opacity-50">Rush only. Monsters keep smashing the shortest path even after a lane opens.</span>
+            </span>
+          </label>
 
           <label class="form-control w-full">
             <span class="label-text text-xs">Grid width</span>
@@ -1037,7 +1089,7 @@
   </aside>
 
   {# ── Stage: playfield / scoreboard tabs ───────────────────── #}
-  <section class="editor-stage" aria-label="Map stage">
+  <section class="editor-stage" aria-label="Map stage"{% if show_game_picker %} inert{% endif %}>
     <div class="stage-tabs" role="tablist" aria-label="Game pane">
       <button type="button" class="stage-tab is-active" role="tab" aria-selected="true" data-stage-tab="playfield" id="tab-playfield">Playfield</button>
       <button type="button" class="stage-tab" role="tab" aria-selected="false" data-stage-tab="scoreboard" id="tab-scoreboard">Scoreboard</button>
@@ -1142,6 +1194,45 @@
       <span class="playtest-bar__msg" id="pt-msg">Ready — press Play to test this map.</span>
     </div>
   </section>
+
+  {% if show_game_picker %}
+  <script type="application/json" id="starter-documents">{{ starter_documents_json|safe }}</script>
+  <div
+    class="game-type-picker"
+    id="game-type-picker"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="game-type-picker-title"
+  >
+    <div class="game-type-picker__panel">
+      <div class="flex items-start justify-between gap-3 mb-1">
+        <h2 id="game-type-picker-title" class="text-2xl font-bold tracking-tight">Choose a game type</h2>
+        <a href="{{ picker_cancel_url }}" class="btn btn-ghost btn-sm">Cancel</a>
+      </div>
+      <p class="text-sm opacity-70 mb-4 max-w-3xl">
+        Each choice starts a small playable game: two tower types, two monster types, and two rounds.
+        Tune those samples in the list on the left.
+      </p>
+      <div class="game-type-picker__cards">
+        {% for choice in game_type_choices %}
+          <button type="button" class="game-type-card" data-game-type="{{ choice.key }}">
+            <span class="game-type-card__title">{{ choice.label }}</span>
+            <span class="game-type-card__desc">{{ choice.blurb }}</span>
+          </button>
+        {% endfor %}
+      </div>
+      <label class="game-type-picker__blank">
+        <input id="picker-blank-map" type="checkbox">
+        <span class="text-sm leading-snug">
+          Start the game with a blank map with no predetermined items.
+          <span class="block text-xs opacity-60 mt-0.5">
+            The grid stays empty. Sample towers, monsters, and two rounds stay so you can tune them.
+          </span>
+        </span>
+      </label>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 <script id="initial-game-document" type="application/json">{{ game_document_json|safe }}</script>

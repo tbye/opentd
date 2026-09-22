@@ -8,13 +8,43 @@ from django.urls import reverse
 
 from .drafts import promote_pending_to_game
 from .game_schema import (
+    GAME_TYPE_MONSTER_MARCH,
+    GAME_TYPE_ORDER,
     completeness,
     default_game_document,
     normalize_game_document,
+    parse_round_spec,
+    starter_game_document,
 )
 from .models import Game, PendingGame
 
 User = get_user_model()
+
+
+def _reaches(grid, start, goals, *, walkable):
+    """4-directional reachability. walkable=None means any cell that is not a wall."""
+    height = len(grid)
+    width = len(grid[0]) if height else 0
+    goalset = set(goals)
+    seen = {start}
+    queue = [start]
+    while queue:
+        x, y = queue.pop()
+        if (x, y) in goalset:
+            return True
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if nx < 0 or ny < 0 or nx >= width or ny >= height or (nx, ny) in seen:
+                continue
+            kind = grid[ny][nx]
+            if walkable is None:
+                if kind == "blocked":
+                    continue
+            elif kind not in walkable:
+                continue
+            seen.add((nx, ny))
+            queue.append((nx, ny))
+    return False
 
 
 class DatabaseConfigTests(SimpleTestCase):
@@ -104,6 +134,64 @@ class GameSchemaTests(TestCase):
         bad = normalize_game_document({"settings": {"game_type": "nope"}})
         self.assertEqual(bad["settings"]["game_type"], "monster_march")
 
+    def test_starter_games_are_paired_and_playable(self):
+        for game_type in GAME_TYPE_ORDER:
+            doc = starter_game_document(game_type)
+            self.assertEqual(doc["settings"]["game_type"], game_type)
+            self.assertEqual(len(doc["towers"]), 2)
+            self.assertEqual(len(doc["monsters"]), 2)
+            self.assertEqual(len(doc["wave_types"]), 2)
+            self.assertEqual(len(doc["spawns"]), 2)
+            self.assertEqual(len(doc["exits"]), 2)
+            rounds = []
+            for wave in doc["wave_types"]:
+                rounds.extend(
+                    parse_round_spec(wave["rounds"], max_round=doc["settings"]["max_rounds"])
+                )
+            self.assertEqual(sorted(set(rounds)), [1, 2])
+            self.assertEqual(doc["settings"]["max_rounds"], 2)
+            weapons = {t["weapon"]["type"] for t in doc["towers"]}
+            elements = {t["element"]["type"] for t in doc["towers"]}
+            self.assertGreater(len(weapons), 1)
+            self.assertIn("none", elements)
+            self.assertTrue(elements - {"none"})
+            self.assertGreater(doc["settings"]["starting_gold"], 0)
+            self.assertLessEqual(
+                min(t["cost"] for t in doc["towers"]),
+                doc["settings"]["starting_gold"],
+            )
+            goals = [(e["x"], e["y"]) for e in doc["exits"]]
+            if game_type == GAME_TYPE_MONSTER_MARCH:
+                walkable = {"path", "spawn", "exit"}
+                self.assertFalse(doc["settings"]["allow_ground_build"])
+                self.assertTrue(
+                    all(s["exit_mode"] == "specific" and s["exit_id"] for s in doc["spawns"])
+                )
+            else:
+                walkable = None
+                self.assertTrue(doc["settings"]["allow_ground_build"])
+            for spawn in doc["spawns"]:
+                self.assertTrue(
+                    _reaches(
+                        doc["grid"],
+                        (spawn["x"], spawn["y"]),
+                        goals,
+                        walkable=walkable,
+                    ),
+                    f"{game_type} spawn {spawn['id']} cannot reach an exit",
+                )
+
+            blank = starter_game_document(game_type, blank=True)
+            self.assertEqual(blank["settings"]["game_type"], game_type)
+            self.assertEqual(len(blank["towers"]), 2)
+            self.assertEqual(len(blank["monsters"]), 2)
+            self.assertEqual(len(blank["wave_types"]), 2)
+            self.assertEqual(blank["spawns"], [])
+            self.assertEqual(blank["exits"], [])
+            self.assertTrue(
+                all(cell == "ground" for row in blank["grid"] for cell in row)
+            )
+
     def test_spawns_and_exits_sync_from_grid(self):
         base = default_game_document()
         w = base["settings"]["width"]
@@ -174,10 +262,35 @@ class DraftAndPromoteTests(TestCase):
         self.assertContains(r, "Monster Rush")
         self.assertContains(r, "Defend the Castle")
         self.assertContains(r, "Chaos mode")
+        self.assertContains(r, 'id="game-type-picker"')
+        self.assertContains(r, "game-type-picker__cards")
+        self.assertContains(r, 'data-game-type="monster_march"')
+        self.assertContains(r, 'data-game-type="monster_rush"')
+        self.assertContains(r, 'data-game-type="defend_the_castle"')
+        self.assertContains(
+            r, "Start the game with a blank map with no predetermined items."
+        )
+        self.assertContains(r, 'id="set-game-type"')
         self.assertContains(r, "Sign up to save")
         self.assertContains(r, "nav-signup-help-tip")
         self.assertNotContains(r, "btn-signup-save")
         self.assertNotContains(r, "btn-save-draft")
+
+    def test_new_game_picker_does_not_load_existing_draft(self):
+        doc = default_game_document(title="Secret draft")
+        saved = self.client.post(
+            reverse("draft_api"),
+            data=json.dumps({"definition": doc}),
+            content_type="application/json",
+        )
+        self.assertEqual(saved.status_code, 200)
+        fresh = self.client.get(reverse("editor") + "?new=1")
+        self.assertEqual(fresh.status_code, 200)
+        self.assertContains(fresh, 'id="game-type-picker"')
+        self.assertNotContains(fresh, "Secret draft")
+        resume = self.client.get(reverse("editor"))
+        self.assertNotContains(resume, 'id="game-type-picker"')
+        self.assertContains(resume, "Secret draft")
 
     def test_draft_api_saves_session_pending(self):
         doc = default_game_document(title="My map")

@@ -113,6 +113,18 @@
   let selectedPortal = null;
   let dirty = false;
   let saveTimer = null;
+  // New-game picker is in the DOM only until a type is chosen. Autosave stays
+  // off so a previous draft is not overwritten if they leave without choosing.
+  let pickerOpen = !!document.getElementById("game-type-picker");
+  let starterPacks = {};
+  try {
+    const starterEl = document.getElementById("starter-documents");
+    if (starterEl && starterEl.textContent.trim()) {
+      starterPacks = JSON.parse(starterEl.textContent);
+    }
+  } catch (_) {
+    starterPacks = {};
+  }
 
   // Persist palette open/closed (and which entity is expanded) across reloads.
   const UI_STATE_KEY = "opentd.editor.uiState";
@@ -1610,8 +1622,27 @@
   }
 
   function readGameTypeFromForm() {
-    const checked = document.querySelector('input[name="game-type"]:checked');
-    return checked ? checked.value : "monster_march";
+    const sel = document.getElementById("set-game-type");
+    if (sel && sel.value) return sel.value;
+    return (doc.settings && doc.settings.game_type) || "monster_march";
+  }
+
+  function syncFormFromDoc() {
+    if (els.title) els.title.value = doc.title || "";
+    if (els.width) els.width.value = doc.settings.width;
+    if (els.height) els.height.value = doc.settings.height;
+    if (els.groundBuild) els.groundBuild.checked = !!doc.settings.allow_ground_build;
+    if (els.lives) els.lives.value = doc.settings.starting_lives;
+    if (els.gold) els.gold.value = doc.settings.starting_gold;
+    const gameType = document.getElementById("set-game-type");
+    if (gameType) gameType.value = doc.settings.game_type || "monster_march";
+    if (els.chaosMode) els.chaosMode.checked = !!doc.settings.chaos_mode;
+    const startDelay = document.getElementById("set-start-delay");
+    const waveDelay = document.getElementById("set-wave-delay");
+    if (startDelay) startDelay.value = doc.settings.start_delay_seconds ?? 15;
+    if (waveDelay) {
+      waveDelay.value = doc.settings.between_waves_delay_seconds ?? 5;
+    }
   }
 
   function syncDocFromForm() {
@@ -1801,6 +1832,7 @@
   }
 
   async function autosaveDraft() {
+    if (pickerOpen) return;
     syncDocFromForm();
     setStatus("Saving…");
     try {
@@ -1953,12 +1985,10 @@
     doc.settings.chaos_mode = !!els.chaosMode.checked;
     markDirty();
   });
-  document.querySelectorAll('input[name="game-type"]').forEach((radio) => {
-    radio.addEventListener("change", () => {
-      doc.settings.game_type = readGameTypeFromForm();
-      updateGameTypeUi();
-      markDirty();
-    });
+  document.getElementById("set-game-type")?.addEventListener("change", () => {
+    doc.settings.game_type = readGameTypeFromForm();
+    updateGameTypeUi();
+    markDirty();
   });
   // Ground-build and economy affect playability immediately.
   els.groundBuild?.addEventListener("change", () => updatePlayButtonPlayability());
@@ -2214,9 +2244,70 @@
   renderWaveTypes();
   updateLimitsBanner();
   updateGameTypeUi();
-  if (isGuest) {
+  if (isGuest && !pickerOpen) {
     setTimeout(() => autosaveDraft(), 400);
   }
+
+  function closeGameTypePicker() {
+    pickerOpen = false;
+    const picker = document.getElementById("game-type-picker");
+    if (picker) picker.hidden = true;
+    document.querySelector(".editor-palette")?.removeAttribute("inert");
+    document.querySelector(".editor-stage")?.removeAttribute("inert");
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("new")) {
+      url.searchParams.delete("new");
+      const next = url.pathname + url.search + url.hash;
+      history.replaceState({}, "", next);
+    }
+  }
+
+  function applyStarter(gameType) {
+    const pack = starterPacks[gameType];
+    if (!pack) {
+      setStatus("Could not load that game type", "error");
+      return;
+    }
+    const blank = !!document.getElementById("picker-blank-map")?.checked;
+    const src = blank ? pack.blank : pack.playable;
+    if (!src || !src.settings || !src.grid) {
+      setStatus("Could not load that game type", "error");
+      return;
+    }
+    doc = JSON.parse(JSON.stringify(src));
+    if (!Array.isArray(doc.spawns)) doc.spawns = [];
+    if (!Array.isArray(doc.exits)) doc.exits = [];
+    if (!Array.isArray(doc.wave_types)) doc.wave_types = [];
+    ensureScoreboard();
+    (doc.towers || []).forEach(ensureTowerShape);
+    ensureWaveTypes();
+    selectedTowerId = doc.towers[0] ? doc.towers[0].id : null;
+    selectedMonsterId = doc.monsters[0] ? doc.monsters[0].id : null;
+    selectedWaveTypeId = doc.wave_types[0] ? doc.wave_types[0].id : null;
+    selectedPortal = null;
+    els.portalEditor?.classList.add("hidden");
+    prunePortalsOutsideGrid();
+    syncFormFromDoc();
+    updateGameTypeUi();
+    renderGrid();
+    renderPortals();
+    renderTowers();
+    renderMonsters();
+    renderWaveTypes();
+    renderScoreboardEditor();
+    refreshGameInfoBarIdle();
+    updateLimitsBanner();
+    closeGameTypePicker();
+    markDirty();
+    const titleEl = document.getElementById("game-title");
+    titleEl?.focus();
+  }
+
+  document.getElementById("game-type-picker")?.addEventListener("click", (e) => {
+    const card = e.target.closest("[data-game-type]");
+    if (!card) return;
+    applyStarter(card.getAttribute("data-game-type"));
+  });
 
   // Playtest runtime (bottom bar)
   if (window.OpenTDPlaytest) {

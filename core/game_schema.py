@@ -69,6 +69,30 @@ GAME_TYPE_LABELS = {
     GAME_TYPE_MONSTER_RUSH: "Monster Rush",
     GAME_TYPE_DEFEND_THE_CASTLE: "Defend the Castle",
 }
+# Picker order. Blurbs are the short "how it's played" lines on the new-game cards.
+GAME_TYPE_ORDER = (
+    GAME_TYPE_MONSTER_MARCH,
+    GAME_TYPE_MONSTER_RUSH,
+    GAME_TYPE_DEFEND_THE_CASTLE,
+)
+GAME_TYPE_BLURBS = {
+    GAME_TYPE_MONSTER_MARCH: (
+        "Monsters follow the painted path from the spawns to the exits. "
+        "Stop them with towers on the pads beside each lane."
+    ),
+    GAME_TYPE_MONSTER_RUSH: (
+        "No fixed path. Maze the field with walls and towers. "
+        "Blocked monsters attack obstacles on the shortest route until a way through opens."
+    ),
+    GAME_TYPE_DEFEND_THE_CASTLE: (
+        "Monsters rush the castle in the center. "
+        "Hold the two gates with towers before they reach it."
+    ),
+}
+
+# Small starter maps: wide enough for two lanes, short enough to read at a glance.
+STARTER_WIDTH = 16
+STARTER_HEIGHT = 10
 
 SCHEMA_VERSION = 1
 
@@ -551,6 +575,265 @@ def default_game_document(*, title: str = "Untitled game") -> dict[str, Any]:
             "items": list(DEFAULT_SCOREBOARD_ITEMS),
         },
     }
+
+
+def _sample_towers() -> list[dict[str, Any]]:
+    """Two purchasable towers with different weapons and elements to tune."""
+    archer = default_tower()
+    archer.update(
+        {
+            "id": "twr_archer",
+            "name": "Archer",
+            "cost": 50,
+            "damage": 8,
+            "range": 3,
+            "hp": 40,
+            "cooldown": 0.8,
+            "description": "Sample single-target tower.",
+            "weapon": default_weapon(),
+            "element": default_element(),
+            "upgrade_of": "",
+            "upgrade_level": 1,
+        }
+    )
+    splinter = default_tower()
+    splinter.update(
+        {
+            "id": "twr_splinter",
+            "name": "Splinter",
+            "cost": 80,
+            "damage": 3,
+            "range": 2,
+            "hp": 45,
+            "cooldown": 1.2,
+            "description": "Sample shotgun with poison. Tune pellets, spread, and damage over time.",
+            "weapon": {
+                "type": "shotgun",
+                "projectile_count": 5,
+                "burst_interval": 0.08,
+                "spread_degrees": 36.0,
+            },
+            "element": {
+                "type": "poison",
+                "duration": 3.0,
+                "tick_rate": 0.5,
+                "tick_damage": 2.0,
+                "slow_factor": 0.5,
+                "aoe_radius": 0.0,
+            },
+            "upgrade_of": "",
+            "upgrade_level": 1,
+        }
+    )
+    return [archer, splinter]
+
+
+def _sample_monsters() -> list[dict[str, Any]]:
+    """Two monster types: one fast and fragile, one slow and tough."""
+    return [
+        {
+            "id": "mob_goblin",
+            "name": "Goblin",
+            "hp": 16,
+            "speed": 1.3,
+            "reward": 8,
+            "description": "Sample fast monster.",
+        },
+        {
+            "id": "mob_brute",
+            "name": "Brute",
+            "hp": 48,
+            "speed": 0.6,
+            "reward": 16,
+            "description": "Sample slow, high-health monster.",
+        },
+    ]
+
+
+def _sample_waves() -> list[dict[str, Any]]:
+    """Two rounds, one wave type each, so both schedules are visible to edit."""
+    scouts = default_wave_type(monster_id="mob_goblin")
+    scouts.update(
+        {
+            "id": "wav_scouts",
+            "name": "Scouts",
+            "rounds": "1",
+            "groups": [{"monster_id": "mob_goblin", "count": 4}],
+            "scaling": [
+                {
+                    "stat": "hp",
+                    "basis": "appearance",
+                    "mode": "base_plus_n_times_factor",
+                    "factor": 4.0,
+                }
+            ],
+        }
+    )
+    heavies = default_wave_type(monster_id="mob_brute")
+    heavies.update(
+        {
+            "id": "wav_heavies",
+            "name": "Heavies",
+            "rounds": "2",
+            "groups": [{"monster_id": "mob_brute", "count": 2}],
+            "scaling": [
+                {
+                    "stat": "reward",
+                    "basis": "round",
+                    "mode": "base_times_one_plus_n_minus_one_times_factor",
+                    "factor": 0.5,
+                }
+            ],
+        }
+    )
+    return [scouts, heavies]
+
+
+def _paint(cells: dict[tuple[int, int], str], x: int, y: int, kind: str) -> None:
+    cells[(x, y)] = kind
+
+
+def _march_cells() -> dict[tuple[int, int], str]:
+    """Two straight lanes, each with a spawn, an exit, and two tower pads."""
+    cells: dict[tuple[int, int], str] = {}
+    for x in range(1, STARTER_WIDTH - 1):
+        _paint(cells, x, 2, CELL_PATH)
+        _paint(cells, x, 7, CELL_PATH)
+    _paint(cells, 0, 2, CELL_SPAWN)
+    _paint(cells, STARTER_WIDTH - 1, 2, CELL_EXIT)
+    _paint(cells, 0, 7, CELL_SPAWN)
+    _paint(cells, STARTER_WIDTH - 1, 7, CELL_EXIT)
+    for x in (4, 11):
+        _paint(cells, x, 1, CELL_TOWER)
+        _paint(cells, x, 8, CELL_TOWER)
+    return cells
+
+
+def _rush_cells() -> dict[tuple[int, int], str]:
+    """Open field, two spawns, two exits, and two wall gaps that stay walkable."""
+    cells: dict[tuple[int, int], str] = {}
+    _paint(cells, 0, 2, CELL_SPAWN)
+    _paint(cells, 0, 7, CELL_SPAWN)
+    _paint(cells, STARTER_WIDTH - 1, 2, CELL_EXIT)
+    _paint(cells, STARTER_WIDTH - 1, 7, CELL_EXIT)
+    for y in range(0, 4):
+        _paint(cells, 5, y, CELL_BLOCKED)
+    for y in range(6, STARTER_HEIGHT):
+        _paint(cells, 5, y, CELL_BLOCKED)
+    for y in range(2, 8):
+        _paint(cells, 10, y, CELL_BLOCKED)
+    _paint(cells, 3, 4, CELL_TOWER)
+    _paint(cells, 12, 5, CELL_TOWER)
+    return cells
+
+
+def _castle_cells() -> dict[tuple[int, int], str]:
+    """A walled keep with two gates, two exits inside, and two spawns outside."""
+    cells: dict[tuple[int, int], str] = {}
+    _paint(cells, 0, 1, CELL_SPAWN)
+    _paint(cells, STARTER_WIDTH - 1, 8, CELL_SPAWN)
+    _paint(cells, 7, 4, CELL_EXIT)
+    _paint(cells, 8, 5, CELL_EXIT)
+    for x in (6, 8, 9):
+        _paint(cells, x, 3, CELL_BLOCKED)  # north gate left open at (7, 3)
+    for x in (6, 7, 9):
+        _paint(cells, x, 6, CELL_BLOCKED)  # south gate left open at (8, 6)
+    for y in range(3, 7):
+        _paint(cells, 5, y, CELL_BLOCKED)
+        _paint(cells, 10, y, CELL_BLOCKED)
+    _paint(cells, 7, 2, CELL_TOWER)
+    _paint(cells, 8, 7, CELL_TOWER)
+    return cells
+
+
+def _cells_to_grid(cells: dict[tuple[int, int], str]) -> list[list[str]]:
+    grid = empty_grid(STARTER_WIDTH, STARTER_HEIGHT)
+    for (x, y), kind in cells.items():
+        grid[y][x] = kind
+    return grid
+
+
+def _portals_for(game_type: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if game_type == GAME_TYPE_MONSTER_MARCH:
+        spawns = [
+            {"id": "1", "x": 0, "y": 2, "exit_mode": EXIT_MODE_SPECIFIC, "exit_id": "1"},
+            {"id": "2", "x": 0, "y": 7, "exit_mode": EXIT_MODE_SPECIFIC, "exit_id": "2"},
+        ]
+        exits = [
+            {"id": "1", "x": STARTER_WIDTH - 1, "y": 2},
+            {"id": "2", "x": STARTER_WIDTH - 1, "y": 7},
+        ]
+        return spawns, exits
+    if game_type == GAME_TYPE_DEFEND_THE_CASTLE:
+        spawns = [
+            {"id": "1", "x": 0, "y": 1, "exit_mode": EXIT_MODE_ANY, "exit_id": ""},
+            {
+                "id": "2",
+                "x": STARTER_WIDTH - 1,
+                "y": 8,
+                "exit_mode": EXIT_MODE_ANY,
+                "exit_id": "",
+            },
+        ]
+        exits = [
+            {"id": "1", "x": 7, "y": 4},
+            {"id": "2", "x": 8, "y": 5},
+        ]
+        return spawns, exits
+    spawns = [
+        {"id": "1", "x": 0, "y": 2, "exit_mode": EXIT_MODE_ANY, "exit_id": ""},
+        {"id": "2", "x": 0, "y": 7, "exit_mode": EXIT_MODE_ANY, "exit_id": ""},
+    ]
+    exits = [
+        {"id": "1", "x": STARTER_WIDTH - 1, "y": 2},
+        {"id": "2", "x": STARTER_WIDTH - 1, "y": 7},
+    ]
+    return spawns, exits
+
+
+def starter_game_document(game_type: str, *, blank: bool = False) -> dict[str, Any]:
+    """
+    A small, immediately playable game of the chosen type.
+
+    Catalogs come in pairs (two towers, two monsters, two rounds) so the
+    properties pane has real samples to edit. ``blank`` keeps those samples
+    and leaves the map as empty ground.
+    """
+    if game_type not in GAME_TYPES:
+        game_type = GAME_TYPE_MONSTER_MARCH
+    painters = {
+        GAME_TYPE_MONSTER_MARCH: _march_cells,
+        GAME_TYPE_MONSTER_RUSH: _rush_cells,
+        GAME_TYPE_DEFEND_THE_CASTLE: _castle_cells,
+    }
+    cells = painters[game_type]()
+    spawns, exits = _portals_for(game_type)
+    if blank:
+        cells = {}
+        spawns = []
+        exits = []
+    base = default_game_document(title=GAME_TYPE_LABELS[game_type])
+    base["settings"].update(
+        {
+            "width": STARTER_WIDTH,
+            "height": STARTER_HEIGHT,
+            "game_type": game_type,
+            "chaos_mode": False,
+            "allow_ground_build": game_type != GAME_TYPE_MONSTER_MARCH,
+            "starting_lives": 20,
+            "starting_gold": 200,
+            "path_must_reach_exit": True,
+            "start_delay_seconds": 5,
+            "between_waves_delay_seconds": 4,
+        }
+    )
+    base["grid"] = _cells_to_grid(cells)
+    base["spawns"] = spawns
+    base["exits"] = exits
+    base["towers"] = _sample_towers()
+    base["monsters"] = _sample_monsters()
+    base["wave_types"] = _sample_waves()
+    return normalize_game_document(base)
 
 
 def default_scoreboard() -> dict[str, Any]:

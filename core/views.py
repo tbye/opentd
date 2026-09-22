@@ -9,6 +9,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -19,7 +20,14 @@ from .drafts import (
 )
 from .export_format import build_export_payload, parse_import_payload
 from .forms import turnstile_context
-from .game_schema import GAME_TYPE_LABELS, normalize_game_document
+from .game_schema import (
+    GAME_TYPE_BLURBS,
+    GAME_TYPE_LABELS,
+    GAME_TYPE_ORDER,
+    default_game_document,
+    normalize_game_document,
+    starter_game_document,
+)
 from .limits import (
     MAX_DOCUMENT_BYTES,
     MAX_REQUEST_BODY_BYTES,
@@ -217,11 +225,37 @@ def editor(request: HttpRequest) -> HttpResponse:
         except (TypeError, ValueError):
             parsed_id = None
 
-    document = load_editor_document(
-        request, game_id=parsed_id if owned_game else None
-    )
     pending = get_pending_for_request(request)
+    # New game (and a first visit with nothing to resume) asks for a type
+    # before showing the map. An owned game or an existing draft skips that.
+    wants_new = request.GET.get("new") == "1" and owned_game is None
+    show_game_picker = owned_game is None and (wants_new or pending is None)
+    if owned_game is not None:
+        document = load_editor_document(request, game_id=parsed_id)
+    elif show_game_picker:
+        # Don't hydrate a previous draft under the picker. Choosing a type
+        # replaces it; leaving without a choice leaves the draft untouched.
+        document = default_game_document()
+    else:
+        document = load_editor_document(request)
     limits = limits_for_request(request)
+    starter_documents = {}
+    if show_game_picker:
+        starter_documents = {
+            game_type: {
+                "playable": starter_game_document(game_type, blank=False),
+                "blank": starter_game_document(game_type, blank=True),
+            }
+            for game_type in GAME_TYPE_ORDER
+        }
+    game_type_choices = [
+        {
+            "key": game_type,
+            "label": GAME_TYPE_LABELS[game_type],
+            "blurb": GAME_TYPE_BLURBS[game_type],
+        }
+        for game_type in GAME_TYPE_ORDER
+    ]
 
     return render(
         request,
@@ -238,6 +272,12 @@ def editor(request: HttpRequest) -> HttpResponse:
             "game_is_public": bool(owned_game.is_public) if owned_game else False,
             "game_allow_download": bool(owned_game.allow_download) if owned_game else False,
             "game_share_code": owned_game.share_code if owned_game else "",
+            "show_game_picker": show_game_picker,
+            "game_type_choices": game_type_choices,
+            "starter_documents_json": json.dumps(starter_documents),
+            "picker_cancel_url": reverse("dashboard")
+            if request.user.is_authenticated
+            else reverse("home"),
         },
     )
 

@@ -42,7 +42,7 @@
   {% else %}
     <div class="alert alert-info text-sm">
       No public games{% if filter_type %} for this type{% endif %} yet. Be the first —
-      <a href="{% url 'editor' %}" class="link font-semibold">build one</a> and mark it public.
+      <a href="{% url 'editor' %}?new=1" class="link font-semibold">build one</a> and mark it public.
     </div>
   {% endif %}
 </div>
