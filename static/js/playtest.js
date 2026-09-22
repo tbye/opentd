@@ -418,6 +418,24 @@
     return (doc.exits || []).map((e) => ({ x: e.x, y: e.y }));
   }
 
+  function castleCells(grid) {
+    const goals = [];
+    if (!grid) return goals;
+    for (let y = 0; y < grid.length; y++) {
+      const row = grid[y] || [];
+      for (let x = 0; x < row.length; x++) {
+        if (row[x] === "castle") goals.push({ x: x, y: y });
+      }
+    }
+    return goals;
+  }
+
+  function goalsForSpawn(spawn, doc, grid) {
+    const gt = (doc.settings && doc.settings.game_type) || "monster_march";
+    if (gt === "defend_the_castle") return castleCells(grid || doc.grid);
+    return exitGoalsForSpawn(spawn, doc);
+  }
+
   function isRushLike(gameType) {
     return gameType === "monster_rush" || gameType === "defend_the_castle";
   }
@@ -431,7 +449,7 @@
    *   on that path even if a free detour exists.
    */
   function pathForMonster(spawn, doc, grid) {
-    const goals = exitGoalsForSpawn(spawn, doc);
+    const goals = goalsForSpawn(spawn, doc, grid);
     if (!goals.length) return null;
     const gt = doc.settings.game_type || "monster_march";
     const chaos = !!doc.settings.chaos_mode;
@@ -1105,7 +1123,12 @@
     }
 
     // monsters
-    const goals = (state.doc.exits || []).map((e) => key(e.x, e.y));
+    const gtNow =
+      (state.doc.settings && state.doc.settings.game_type) || "monster_march";
+    const goals =
+      gtNow === "defend_the_castle"
+        ? castleCells(state.simGrid).map((g) => key(g.x, g.y))
+        : (state.doc.exits || []).map((e) => key(e.x, e.y));
     for (let i = state.monsters.length - 1; i >= 0; i--) {
       const m = state.monsters[i];
       if (m.hp <= 0) {

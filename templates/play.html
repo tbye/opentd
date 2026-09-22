@@ -43,6 +43,7 @@
     .editor-cell[data-kind="blocked"] { background: #546e7a; }
     .editor-cell[data-kind="spawn"]   { background: #ff9800; }
     .editor-cell[data-kind="exit"]    { background: #e53935; }
+    .editor-cell[data-kind="castle"]  { background: #6a1b9a; }
     .playtest-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
     .play-shell.is-playtesting .playtest-overlay { pointer-events: auto; cursor: crosshair; }
     .playtest-mob {
@@ -209,6 +210,8 @@
           var list = kind === "spawn" ? doc.spawns : doc.exits;
           var portal = (list || []).find(function (p) { return p.x === x && p.y === y; });
           cellDiv.textContent = portal ? portal.id : (kind === "spawn" ? "S" : "E");
+        } else if (kind === "castle") {
+          cellDiv.textContent = "C";
         }
         gridEl.appendChild(cellDiv);
       }

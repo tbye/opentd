@@ -25,6 +25,7 @@ CELL_TOWER = "tower"  # optional dedicated tower pad
 CELL_BLOCKED = "blocked"  # never buildable scenery
 CELL_SPAWN = "spawn"  # monster entry point
 CELL_EXIT = "exit"  # monster goal
+CELL_CASTLE = "castle"  # Defend the Castle objective; paint on any cell
 
 CELL_KINDS = frozenset(
     {
@@ -34,6 +35,7 @@ CELL_KINDS = frozenset(
         CELL_BLOCKED,
         CELL_SPAWN,
         CELL_EXIT,
+        CELL_CASTLE,
     }
 )
 
@@ -52,8 +54,8 @@ EXIT_MODES = frozenset({EXIT_MODE_ANY, EXIT_MODE_SPECIFIC})
 #   If there is no open path spawn→exit, monsters attack walls/towers on the
 #   shortest route. When a free path opens, they follow it and stop attacking
 #   (unless chaos_mode is on).
-# defend_the_castle — monsters try to destroy a central castle objective instead
-#   of (or in addition to) reaching an exit, depending on play rules.
+# defend_the_castle — monsters try to reach painted castle cells. Those cells
+#   can sit anywhere on the map; there is no fixed position.
 GAME_TYPE_MONSTER_MARCH = "monster_march"
 GAME_TYPE_MONSTER_RUSH = "monster_rush"
 GAME_TYPE_DEFEND_THE_CASTLE = "defend_the_castle"
@@ -85,8 +87,8 @@ GAME_TYPE_BLURBS = {
         "Blocked monsters attack obstacles on the shortest route until a way through opens."
     ),
     GAME_TYPE_DEFEND_THE_CASTLE: (
-        "Monsters rush the castle in the center. "
-        "Hold the two gates with towers before they reach it."
+        "Monsters head for the castle. "
+        "Paint that castle on any cells you want to defend, then hold them off with towers."
     ),
 }
 
@@ -728,21 +730,20 @@ def _rush_cells() -> dict[tuple[int, int], str]:
 
 
 def _castle_cells() -> dict[tuple[int, int], str]:
-    """A walled keep with two gates, two exits inside, and two spawns outside."""
+    """Two castle cells on the right, with a gap in a wall so both spawns can reach them.
+
+    The castle is ordinary painted cells. Players move it by painting Castle elsewhere.
+    """
     cells: dict[tuple[int, int], str] = {}
-    _paint(cells, 0, 1, CELL_SPAWN)
-    _paint(cells, STARTER_WIDTH - 1, 8, CELL_SPAWN)
-    _paint(cells, 7, 4, CELL_EXIT)
-    _paint(cells, 8, 5, CELL_EXIT)
-    for x in (6, 8, 9):
-        _paint(cells, x, 3, CELL_BLOCKED)  # north gate left open at (7, 3)
-    for x in (6, 7, 9):
-        _paint(cells, x, 6, CELL_BLOCKED)  # south gate left open at (8, 6)
-    for y in range(3, 7):
-        _paint(cells, 5, y, CELL_BLOCKED)
-        _paint(cells, 10, y, CELL_BLOCKED)
-    _paint(cells, 7, 2, CELL_TOWER)
-    _paint(cells, 8, 7, CELL_TOWER)
+    _paint(cells, 0, 2, CELL_SPAWN)
+    _paint(cells, 0, 7, CELL_SPAWN)
+    _paint(cells, 12, 4, CELL_CASTLE)
+    _paint(cells, 13, 4, CELL_CASTLE)
+    # Wall column with a two-cell gap in front of the castle.
+    for y in (0, 1, 2, 3, 6, 7, 8, 9):
+        _paint(cells, 9, y, CELL_BLOCKED)
+    _paint(cells, 7, 4, CELL_TOWER)
+    _paint(cells, 14, 4, CELL_TOWER)
     return cells
 
 
@@ -765,21 +766,12 @@ def _portals_for(game_type: str) -> tuple[list[dict[str, Any]], list[dict[str, A
         ]
         return spawns, exits
     if game_type == GAME_TYPE_DEFEND_THE_CASTLE:
+        # The castle cells are the goal. Exits are optional and start empty.
         spawns = [
-            {"id": "1", "x": 0, "y": 1, "exit_mode": EXIT_MODE_ANY, "exit_id": ""},
-            {
-                "id": "2",
-                "x": STARTER_WIDTH - 1,
-                "y": 8,
-                "exit_mode": EXIT_MODE_ANY,
-                "exit_id": "",
-            },
+            {"id": "1", "x": 0, "y": 2, "exit_mode": EXIT_MODE_ANY, "exit_id": ""},
+            {"id": "2", "x": 0, "y": 7, "exit_mode": EXIT_MODE_ANY, "exit_id": ""},
         ]
-        exits = [
-            {"id": "1", "x": 7, "y": 4},
-            {"id": "2", "x": 8, "y": 5},
-        ]
-        return spawns, exits
+        return spawns, []
     spawns = [
         {"id": "1", "x": 0, "y": 2, "exit_mode": EXIT_MODE_ANY, "exit_id": ""},
         {"id": "2", "x": 0, "y": 7, "exit_mode": EXIT_MODE_ANY, "exit_id": ""},
@@ -1100,31 +1092,49 @@ def _sync_portals(
     return spawns, exits
 
 
+def _count_cells(grid: Any, kind: str) -> int:
+    if not isinstance(grid, list):
+        return 0
+    return sum(1 for row in grid if isinstance(row, list) for cell in row if cell == kind)
+
+
 def completeness(document: dict[str, Any]) -> dict[str, Any]:
     """
     Lightweight design completeness checks.
 
-    A complete game requires at least one spawn and one exit (all game types).
+    March and Rush need a spawn and an exit. Defend the Castle needs a spawn
+    and at least one castle cell, which may be painted anywhere.
     """
     spawns = document.get("spawns") or []
     exits = document.get("exits") or []
+    game_type = (document.get("settings") or {}).get(
+        "game_type", GAME_TYPE_MONSTER_MARCH
+    )
+    castle_count = _count_cells(document.get("grid"), CELL_CASTLE)
     has_spawn = len(spawns) >= 1
     has_exit = len(exits) >= 1
+    has_castle = castle_count >= 1
     missing: list[str] = []
     if not has_spawn:
         missing.append("At least one Spawn is required.")
-    if not has_exit:
-        missing.append("At least one Exit is required.")
+    if game_type == GAME_TYPE_DEFEND_THE_CASTLE:
+        if not has_castle:
+            missing.append("At least one Castle cell is required.")
+        complete = has_spawn and has_castle
+    else:
+        if not has_exit:
+            missing.append("At least one Exit is required.")
+        complete = has_spawn and has_exit
     return {
-        "complete": has_spawn and has_exit,
+        "complete": complete,
         "has_spawn": has_spawn,
         "has_exit": has_exit,
+        "has_castle": has_castle,
         "spawn_count": len(spawns),
         "exit_count": len(exits),
+        "castle_count": castle_count,
         "missing": missing,
-        "game_type": (document.get("settings") or {}).get(
-            "game_type", GAME_TYPE_MONSTER_MARCH
-        ),
+        "game_type": game_type,
     }
 
 

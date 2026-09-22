@@ -36,8 +36,26 @@
     return k === "path" || k === "spawn" || k === "exit";
   }
 
-  /** BFS whether any goal is reachable from (sx,sy) on march walkable cells. */
-  function canReach(grid, sx, sy, goals) {
+  function openWalkable(grid, x, y) {
+    if (!inBounds(grid, x, y)) return false;
+    return grid[y][x] !== "blocked";
+  }
+
+  function cellsOfKind(grid, kind) {
+    const found = [];
+    if (!grid) return found;
+    for (let y = 0; y < grid.length; y++) {
+      const row = grid[y] || [];
+      for (let x = 0; x < row.length; x++) {
+        if (row[x] === kind) found.push({ x: x, y: y });
+      }
+    }
+    return found;
+  }
+
+  /** BFS whether any goal is reachable from (sx,sy). walkFn defaults to march lanes. */
+  function canReach(grid, sx, sy, goals, walkFn) {
+    const walk = walkFn || marchWalkable;
     const goalSet = new Set(goals.map((g) => key(g.x, g.y)));
     if (goalSet.has(key(sx, sy))) return true;
     const seen = new Set([key(sx, sy)]);
@@ -49,7 +67,7 @@
         const ny = y + dy;
         const nk = key(nx, ny);
         if (seen.has(nk)) continue;
-        if (!marchWalkable(grid, nx, ny)) continue;
+        if (!walk(grid, nx, ny)) continue;
         if (goalSet.has(nk)) return true;
         seen.add(nk);
         q.push([nx, ny]);
@@ -105,7 +123,7 @@
         message: "Add at least one Spawn. Monsters need an entry point.",
       });
     }
-    if (exits.length < 1) {
+    if (gt !== "defend_the_castle" && exits.length < 1) {
       issues.push({
         severity: "error",
         code: "no_exit",
@@ -241,12 +259,29 @@
     // (Pads remain optional convenience, not a playability warning.)
 
     if (gt === "defend_the_castle") {
-      issues.push({
-        severity: "warning",
-        code: "castle_not_modeled",
-        message:
-          "Defend the Castle: a dedicated castle objective is not fully modeled in playtest yet. Ensure spawns, exits, and towers still form a playable defense.",
-      });
+      const castles = cellsOfKind(grid, "castle");
+      if (!castles.length) {
+        issues.push({
+          severity: "error",
+          code: "no_castle",
+          message:
+            "Paint at least one Castle cell. It can sit on any square; monsters head for those cells.",
+        });
+      } else if (spawns.length) {
+        const unreachable = spawns.filter(
+          (s) => !canReach(grid, s.x, s.y, castles, openWalkable)
+        );
+        if (unreachable.length) {
+          issues.push({
+            severity: "error",
+            code: "castle_unreachable",
+            message:
+              "No open route from spawn “" +
+              unreachable[0].id +
+              "” to a castle cell. Move the castle or open a gap in the walls.",
+          });
+        }
+      }
     }
 
     // Only pads, but none on grid when ground build off — already covered

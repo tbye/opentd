@@ -8,6 +8,7 @@ from django.urls import reverse
 
 from .drafts import promote_pending_to_game
 from .game_schema import (
+    GAME_TYPE_DEFEND_THE_CASTLE,
     GAME_TYPE_MONSTER_MARCH,
     GAME_TYPE_ORDER,
     completeness,
@@ -142,7 +143,19 @@ class GameSchemaTests(TestCase):
             self.assertEqual(len(doc["monsters"]), 2)
             self.assertEqual(len(doc["wave_types"]), 2)
             self.assertEqual(len(doc["spawns"]), 2)
-            self.assertEqual(len(doc["exits"]), 2)
+            if game_type == GAME_TYPE_DEFEND_THE_CASTLE:
+                self.assertEqual(doc["exits"], [])
+                goals = [
+                    (x, y)
+                    for y, row in enumerate(doc["grid"])
+                    for x, cell in enumerate(row)
+                    if cell == "castle"
+                ]
+                self.assertEqual(len(goals), 2)
+                self.assertTrue(completeness(doc)["complete"])
+            else:
+                self.assertEqual(len(doc["exits"]), 2)
+                goals = [(e["x"], e["y"]) for e in doc["exits"]]
             rounds = []
             for wave in doc["wave_types"]:
                 rounds.extend(
@@ -160,7 +173,6 @@ class GameSchemaTests(TestCase):
                 min(t["cost"] for t in doc["towers"]),
                 doc["settings"]["starting_gold"],
             )
-            goals = [(e["x"], e["y"]) for e in doc["exits"]]
             if game_type == GAME_TYPE_MONSTER_MARCH:
                 walkable = {"path", "spawn", "exit"}
                 self.assertFalse(doc["settings"]["allow_ground_build"])
@@ -191,6 +203,33 @@ class GameSchemaTests(TestCase):
             self.assertTrue(
                 all(cell == "ground" for row in blank["grid"] for cell in row)
             )
+
+    def test_castle_cell_survives_anywhere_on_the_grid(self):
+        width, height = 8, 6
+        grid = [["ground" for _ in range(width)] for _ in range(height)]
+        grid[0][0] = "spawn"
+        grid[0][7] = "castle"
+        grid[5][1] = "castle"
+        doc = normalize_game_document(
+            {
+                "settings": {
+                    "game_type": "defend_the_castle",
+                    "width": width,
+                    "height": height,
+                },
+                "grid": grid,
+                "spawns": [
+                    {"id": "1", "x": 0, "y": 0, "exit_mode": "any", "exit_id": ""}
+                ],
+                "exits": [],
+            }
+        )
+        self.assertEqual(doc["grid"][0][7], "castle")
+        self.assertEqual(doc["grid"][5][1], "castle")
+        report = completeness(doc)
+        self.assertTrue(report["complete"])
+        self.assertEqual(report["exit_count"], 0)
+        self.assertEqual(report["castle_count"], 2)
 
     def test_spawns_and_exits_sync_from_grid(self):
         base = default_game_document()
@@ -246,6 +285,9 @@ class DraftAndPromoteTests(TestCase):
         self.assertContains(r, "editor-grid")
         self.assertContains(r, 'data-tool="spawn"')
         self.assertContains(r, 'data-tool="exit"')
+        self.assertContains(r, 'data-tool="castle"')
+        self.assertContains(r, "Paint that castle on any cells you want to defend")
+        self.assertNotContains(r, "castle in the center")
         self.assertContains(r, "paint-bar")
         self.assertContains(r, "paint-swatch")
         self.assertContains(r, "playtest-bar")

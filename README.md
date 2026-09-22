@@ -143,11 +143,11 @@ A game needs **≥1 Spawn** and **≥1 Exit** (shown at the top of the editor pa
 | --- | --- | --- |
 | **Monster March** | `monster_march` | Monsters follow painted path cells toward an exit. |
 | **Monster Rush** | `monster_rush` | No fixed path. Players maze with towers & walls. If no open route spawn→exit, monsters attack walls/towers on the shortest path. When a free path opens they follow it and stop attacking — unless **chaos mode** is on. |
-| **Defend the Castle** | `defend_the_castle` | Monsters try to destroy a central castle tower. |
+| **Defend the Castle** | `defend_the_castle` | Monsters head for painted castle cells. The castle can sit on any cell. |
 
 **Chaos mode** (`settings.chaos_mode`, Monster Rush only): monsters keep destroying obstacles on the shortest path to the exit even after a free lane exists.
 
-Grid cells: **spawn**, **exit**, **path**, **tower pad**, **ground**, **wall (blocked)**.  
+Grid cells: **spawn**, **exit**, **castle**, **path**, **tower pad**, **ground**, **wall (blocked)**.  
 Multiple spawns/exits; ids default to `1`, `2`, … (renameable alphanumeric).  
 Per-spawn exit mode: **any exit** or **specific exit**.
 

@@ -444,6 +444,7 @@
       const e = findExitAt(x, y);
       return e ? e.id : "?";
     }
+    if (kind === "castle") return "C";
     return "";
   }
 
@@ -576,35 +577,78 @@
     });
   }
 
+  function countCells(kind) {
+    let n = 0;
+    const grid = doc.grid || [];
+    for (let y = 0; y < grid.length; y++) {
+      const row = grid[y] || [];
+      for (let x = 0; x < row.length; x++) {
+        if (row[x] === kind) n += 1;
+      }
+    }
+    return n;
+  }
+
   function updateCompleteness() {
+    const gt = (doc.settings && doc.settings.game_type) || "monster_march";
+    const castleMode = gt === "defend_the_castle";
     const nSpawn = doc.spawns.length;
     const nExit = doc.exits.length;
-    const ok = nSpawn >= 1 && nExit >= 1;
+    const nCastle = countCells("castle");
+    const ok = castleMode ? nSpawn >= 1 && nCastle >= 1 : nSpawn >= 1 && nExit >= 1;
     if (els.portalCount) {
-      els.portalCount.textContent = String(nSpawn + nExit);
+      els.portalCount.textContent = String(castleMode ? nSpawn + nCastle : nSpawn + nExit);
       els.portalCount.className =
         "badge badge-sm ml-auto " + (ok ? "badge-success" : "badge-warning");
+    }
+    const exitReq = document.getElementById("exit-req");
+    if (exitReq) exitReq.textContent = castleMode ? "(optional)" : "(need ≥1)";
+    const portalHelp = document.getElementById("portal-help");
+    if (portalHelp) {
+      portalHelp.innerHTML = castleMode
+        ? "<strong>Required:</strong> paint at least one Spawn and one Castle. The castle can sit on any cell. Exits are optional."
+        : "<strong>Required:</strong> paint at least one Spawn and one Exit from the bar above the grid. Multiple allowed — rename ids here. Shift+click a portal on the map to select it.";
+    }
+    if (els.exitEmpty) {
+      els.exitEmpty.textContent = castleMode
+        ? "No exits — optional while defending a castle."
+        : "No exits yet — paint an Exit cell.";
+      els.exitEmpty.classList.toggle("text-warning", !castleMode);
+      els.exitEmpty.classList.toggle("opacity-60", castleMode);
     }
     if (els.completenessBanner && els.completenessText) {
       if (ok) {
         els.completenessBanner.className =
           "alert alert-success text-xs py-2 px-3";
-        els.completenessText.innerHTML =
-          "Complete: <strong>" +
-          nSpawn +
-          "</strong> spawn" +
-          (nSpawn === 1 ? "" : "s") +
-          ", <strong>" +
-          nExit +
-          "</strong> exit" +
-          (nExit === 1 ? "" : "s") +
-          ".";
+        els.completenessText.innerHTML = castleMode
+          ? "Complete: <strong>" +
+            nSpawn +
+            "</strong> spawn" +
+            (nSpawn === 1 ? "" : "s") +
+            ", <strong>" +
+            nCastle +
+            "</strong> castle cell" +
+            (nCastle === 1 ? "" : "s") +
+            "."
+          : "Complete: <strong>" +
+            nSpawn +
+            "</strong> spawn" +
+            (nSpawn === 1 ? "" : "s") +
+            ", <strong>" +
+            nExit +
+            "</strong> exit" +
+            (nExit === 1 ? "" : "s") +
+            ".";
       } else {
         els.completenessBanner.className =
           "alert alert-warning text-xs py-2 px-3";
         const need = [];
         if (nSpawn < 1) need.push("1 Spawn");
-        if (nExit < 1) need.push("1 Exit");
+        if (castleMode) {
+          if (nCastle < 1) need.push("1 Castle");
+        } else if (nExit < 1) {
+          need.push("1 Exit");
+        }
         els.completenessText.innerHTML =
           "A complete game needs at least <strong>" +
           need.join("</strong> and <strong>") +
@@ -690,7 +734,7 @@
           eraseTip;
       } else if (gt === "defend_the_castle") {
         els.terrainHint.textContent =
-          "Defend the Castle: monsters push toward a central castle objective. Place spawns, exits, and defensive terrain." +
+          "Defend the Castle: paint Castle on any cells you want to defend. Monsters head for those cells. Walls and towers can stand in the way." +
           eraseTip;
       } else {
         els.terrainHint.textContent =
@@ -698,6 +742,7 @@
           eraseTip;
       }
     }
+    updateCompleteness();
   }
 
   function renderPortals() {

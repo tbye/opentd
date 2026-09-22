@@ -656,6 +656,7 @@
   .editor-cell[data-kind="blocked"] { background: #546e7a; color: transparent; text-shadow: none; }
   .editor-cell[data-kind="spawn"]   { background: #ff9800; }
   .editor-cell[data-kind="exit"]    { background: #e53935; }
+  .editor-cell[data-kind="castle"]  { background: #6a1b9a; }
   .editor-cell.is-selected-portal {
     outline: 2px solid #fff;
     outline-offset: -2px;
@@ -1004,7 +1005,7 @@
           <div id="completeness-banner" class="alert alert-warning text-xs py-2 px-3" role="status">
             <span id="completeness-text">A complete game needs <strong>at least 1 Spawn</strong> and <strong>1 Exit</strong>.</span>
           </div>
-          <p class="text-[11px] opacity-60 leading-snug px-1">
+          <p class="text-[11px] opacity-60 leading-snug px-1" id="portal-help">
             <strong>Required:</strong> paint at least one Spawn and one Exit from the bar above the grid.
             Multiple allowed — rename ids here. Shift+click a portal on the map to select it.
           </p>
@@ -1108,6 +1109,9 @@
             </button>
             <button type="button" class="paint-swatch" data-tool="exit" aria-pressed="false" title="Monster exit (required)">
               <span class="paint-swatch__chip" style="background:#e53935"></span> Exit
+            </button>
+            <button type="button" class="paint-swatch" data-tool="castle" aria-pressed="false" title="Castle objective. Paint it on any cell.">
+              <span class="paint-swatch__chip" style="background:#6a1b9a"></span> Castle
             </button>
             <button type="button" class="paint-swatch" data-tool="path" aria-pressed="false" title="Monster path (Monster March)">
               <span class="paint-swatch__chip" style="background:#bcaaa4"></span> Path
