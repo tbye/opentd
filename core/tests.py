@@ -3,7 +3,7 @@ import json
 from allauth.account.models import EmailAddress
 from allauth.account.signals import email_confirmed, user_signed_up
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 
 from .drafts import promote_pending_to_game
@@ -15,6 +15,36 @@ from .game_schema import (
 from .models import Game, PendingGame
 
 User = get_user_model()
+
+
+class DatabaseConfigTests(SimpleTestCase):
+    def test_engine_follows_db_url(self):
+        import os
+
+        from django.conf import settings
+
+        db = settings.DATABASES["default"]
+        if os.environ.get("DB_URL", "").strip() or os.environ.get(
+            "DATABASE_URL", ""
+        ).strip():
+            self.assertIn("postgresql", db["ENGINE"])
+            return
+        self.assertEqual(db["ENGINE"], "django.db.backends.sqlite3")
+
+    def test_db_url_parses_postgres(self):
+        import dj_database_url
+
+        cfg = dj_database_url.parse(
+            "postgres://opentd:secret@pg:5432/opentd",
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+        self.assertIn("postgresql", cfg["ENGINE"])
+        self.assertEqual(cfg["NAME"], "opentd")
+        self.assertEqual(cfg["USER"], "opentd")
+        self.assertEqual(cfg["HOST"], "pg")
+        self.assertEqual(int(cfg["PORT"]), 5432)
+        self.assertEqual(cfg["CONN_MAX_AGE"], 600)
 
 
 class GameSchemaTests(TestCase):

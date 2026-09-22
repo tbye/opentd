@@ -6,9 +6,14 @@ services:
     restart: unless-stopped
     ports:
       - '8080:8080'
+    extra_hosts:
+      # DB_URL uses host dell.local; resolve it to the container host.
+      - "dell.local:host-gateway"
     environment:
-      # Persisted on the host at /data/django-apps/opentd/db.sqlite3
+      # SQLITE_PATH remains as rollback if DB_URL is unset.
       SQLITE_PATH: /data/django-apps/opentd/db.sqlite3
+      DB_URL: ${DB_URL:-}
+      DATABASE_URL: ${DATABASE_URL:-${DB_URL:-}}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://opentd.org}
       SITE_NAME: ${SITE_NAME:-OpenTD.org}
       SITE_DOMAIN: ${SITE_DOMAIN:-opentd.org}

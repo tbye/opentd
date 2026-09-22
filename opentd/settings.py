@@ -5,6 +5,8 @@ Django settings for opentd project.
 import os
 from pathlib import Path
 
+import dj_database_url
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -62,7 +64,7 @@ CSRF_TRUSTED_ORIGINS = [
     o.strip()
     for o in os.environ.get(
         "CSRF_TRUSTED_ORIGINS",
-        "http://localhost:8000,http://127.0.0.1:8000,http://localhost:8080,http://127.0.0.1:8080",
+        "http://localhost:8000,http://127.0.0.1:8000,http://localhost:8080,http://127.0.0.1:8080,http://dell.local:4466",
     ).split(",")
     if o.strip()
 ]
@@ -137,17 +139,32 @@ WSGI_APPLICATION = "opentd.wsgi.application"
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+#
+# DB_URL (postgres://…) selects PostgreSQL — Coolify and the review stack.
+# Unset/empty DB_URL keeps SQLite at SQLITE_PATH (local/dev).
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        # SQLITE_PATH is set in docker-compose for a host-mounted data volume.
-        "NAME": Path(os.environ.get("SQLITE_PATH", str(BASE_DIR / "db.sqlite3"))),
-        "OPTIONS": {
-            "timeout": 30,
-        },
+_DB_URL = (
+    os.environ.get("DB_URL") or os.environ.get("DATABASE_URL") or ""
+).strip()
+if _DB_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            _DB_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            # SQLITE_PATH is set in docker-compose for a host-mounted data volume.
+            "NAME": Path(os.environ.get("SQLITE_PATH", str(BASE_DIR / "db.sqlite3"))),
+            "OPTIONS": {
+                "timeout": 30,
+            },
+        }
+    }
 
 
 # Password validation

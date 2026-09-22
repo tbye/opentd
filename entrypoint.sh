@@ -1,11 +1,11 @@
 #!/bin/sh
 set -e
 
-# Ensure host-mounted data dir exists for SQLite (and siblings for static/media).
+# Ensure host-mounted data dir exists for SQLite rollback (and siblings for static/media).
 mkdir -p /data/django-apps/opentd /app/staticfiles /app/mediafiles 2>/dev/null || true
 
-echo " === Database path === "
-uv run --no-sync python -c "from django.conf import settings; import django; import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE','opentd.settings'); django.setup(); print(settings.DATABASES['default']['NAME'])"
+echo " === Database === "
+uv run --no-sync python -c "from django.conf import settings; import django; import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE','opentd.settings'); django.setup(); db=settings.DATABASES['default']; print(db.get('ENGINE'), db.get('NAME'), db.get('HOST',''))"
 
 echo " === Running database migrations... === "
 uv run --no-sync python manage.py migrate --noinput

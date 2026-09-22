@@ -1,0 +1,53 @@
+# Review stack for the SQLite → Postgres cutover.
+# Does not replace Coolify production. Do not use this file on opentd.org.
+#
+#   docker compose -p opentd-review --env-file opentd/.env -f docker-compose.review.yaml up -d --build
+#   http://dell.local:4466
+#
+# Postgres is the Coolify opentd database (DB_URL in opentd/.env).
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - opentd/.env
+    environment:
+      DB_URL: ${DB_URL}
+      DEBUG: "True"
+      PUBLIC_BASE_URL: http://dell.local:4466
+      CSRF_TRUSTED_ORIGINS: http://dell.local:4466,http://127.0.0.1:4466,https://opentd.org
+      ALLOWED_HOSTS: "dell.local,localhost,127.0.0.1"
+      SECURE_SSL_REDIRECT: "False"
+      # Review shares the cutover database; do not purge migrated drafts.
+      PENDING_GAME_RETENTION_DAYS: "36500"
+    extra_hosts:
+      - "dell.local:host-gateway"
+    volumes:
+      - /data/django-apps/opentd/mediafiles:/app/mediafiles:ro
+      - review_static:/app/staticfiles
+    networks:
+      - review
+    expose:
+      - "8080"
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "4466:80"
+    volumes:
+      - ./review/Caddyfile:/etc/caddy/Caddyfile:ro
+      - review_static:/srv/static:ro
+      - /data/django-apps/opentd/mediafiles:/srv/media:ro
+    depends_on:
+      - app
+    networks:
+      - review
+
+volumes:
+  review_static:
+
+networks:
+  review:
+    driver: bridge

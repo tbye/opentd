@@ -37,6 +37,9 @@ mediafiles/
 # Tailwind (keep input + plugins; rebuild output)
 # static/css/output.css is committed so the app works without a watch process
 
+# Cutover artifacts (SQLite copies / dumpdata fixtures)
+var/cutover-*/
+
 # Tooling
 .pytest_cache/
 .mypy_cache/

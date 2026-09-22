@@ -11,6 +11,7 @@ AI is unapologetically used throughout this project. Human optimizations are enc
 | Layer | Choice |
 | --- | --- |
 | Backend | Django 6 |
+| Database | PostgreSQL (`DB_URL`); SQLite when `DB_URL` is unset (local/dev) |
 | Partial HTML | django-htmx + **htmx 4** ([four.htmx.org](https://four.htmx.org)) |
 | CSS | **Tailwind CSS 4** + **DaisyUI** via standalone CLI (**no Node/npm**) |
 | Auth | django-allauth (email login, mandatory email verification) |
@@ -52,7 +53,7 @@ Production-style layout (mirrors other TBYE Django apps):
 | `app` | **8080** | Gunicorn (Django) |
 | `static` | **8180** | Caddy file server for `staticfiles` + `mediafiles` |
 
-Data lives on the host under `/data/django-apps/opentd/` (SQLite, static, media).
+Postgres is selected via `DB_URL` (Coolify env). Static and media live on the host under `/data/django-apps/opentd/`. Local/dev without `DB_URL` still uses SQLite.
 
 ```bash
 # Build & run (requires external Coolify network when used with Coolify)
