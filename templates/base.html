@@ -6,13 +6,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   {# htmx 4 — https://four.htmx.org #}
   <script
-    src="{% static 'js/htmx.min.js' %}"
+    src="{% static 'js/htmx.min.js' %}?v={{ static_asset_version }}"
     defer
   ></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link href="{% static 'css/output.css' %}" rel="stylesheet">
+  <link href="{% static 'css/output.css' %}?v={{ static_asset_version }}" rel="stylesheet">
   <title>{% block page_title %}{{ site_name }}{% endblock page_title %}</title>
   {% block extra_head %}{% endblock extra_head %}
 </head>

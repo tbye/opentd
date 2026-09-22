@@ -240,6 +240,20 @@
     spawnExitId: document.getElementById("spawn-exit-id"),
   };
 
+  // Bind before the rest of init. A later exception must not leave the
+  // cards on screen with no click handler.
+  document.getElementById("game-type-picker")?.addEventListener("click", (e) => {
+    const node = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
+    const card = node && node.closest ? node.closest("[data-game-type]") : null;
+    if (!card) return;
+    try {
+      applyStarter(card.getAttribute("data-game-type"));
+    } catch (err) {
+      console.error(err);
+      showPickerError((err && err.message) || "Could not start that game.");
+    }
+  });
+
   function setStatus(text, tone) {
     if (!els.status) return;
     els.status.textContent = text;
@@ -2307,16 +2321,25 @@
     }
   }
 
+  function showPickerError(message) {
+    const el = document.getElementById("game-type-picker-error");
+    if (el) {
+      el.hidden = false;
+      el.textContent = message;
+    }
+    setStatus(message, "error");
+  }
+
   function applyStarter(gameType) {
     const pack = starterPacks[gameType];
     if (!pack) {
-      setStatus("Could not load that game type", "error");
+      showPickerError("Could not load that game type. Reload the page and try again.");
       return;
     }
     const blank = !!document.getElementById("picker-blank-map")?.checked;
     const src = blank ? pack.blank : pack.playable;
     if (!src || !src.settings || !src.grid) {
-      setStatus("Could not load that game type", "error");
+      showPickerError("Could not load that game type. Reload the page and try again.");
       return;
     }
     doc = JSON.parse(JSON.stringify(src));
@@ -2347,12 +2370,6 @@
     const titleEl = document.getElementById("game-title");
     titleEl?.focus();
   }
-
-  document.getElementById("game-type-picker")?.addEventListener("click", (e) => {
-    const card = e.target.closest("[data-game-type]");
-    if (!card) return;
-    applyStarter(card.getAttribute("data-game-type"));
-  });
 
   // Playtest runtime (bottom bar)
   if (window.OpenTDPlaytest) {

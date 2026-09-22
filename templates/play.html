@@ -180,7 +180,7 @@
   </footer>
 
   <script type="application/json" id="initial-game-document">{{ game_document_json|safe }}</script>
-  <script src="{% static 'js/playtest.js' %}"></script>
+  <script src="{% static 'js/playtest.js' %}?v={{ static_asset_version }}"></script>
   <script>
   (function () {
     var doc;

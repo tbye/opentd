@@ -305,6 +305,7 @@ class DraftAndPromoteTests(TestCase):
         self.assertContains(r, "Defend the Castle")
         self.assertContains(r, "Chaos mode")
         self.assertContains(r, 'id="game-type-picker"')
+        self.assertContains(r, "editor.js?v=")
         self.assertContains(r, "game-type-picker__cards")
         self.assertContains(r, 'data-game-type="monster_march"')
         self.assertContains(r, 'data-game-type="monster_rush"')

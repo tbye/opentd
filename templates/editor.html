@@ -1225,6 +1225,7 @@
           </button>
         {% endfor %}
       </div>
+      <p id="game-type-picker-error" class="text-error text-sm mt-3" hidden></p>
       <label class="game-type-picker__blank">
         <input id="picker-blank-map" type="checkbox">
         <span class="text-sm leading-snug">
@@ -1243,9 +1244,9 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/design_validate.js' %}"></script>
-<script src="{% static 'js/playtest.js' %}"></script>
-<script src="{% static 'js/editor.js' %}"></script>
+<script src="{% static 'js/design_validate.js' %}?v={{ static_asset_version }}"></script>
+<script src="{% static 'js/playtest.js' %}?v={{ static_asset_version }}"></script>
+<script src="{% static 'js/editor.js' %}?v={{ static_asset_version }}"></script>
 <script>
   document.body.classList.add("editor-body");
 </script>
